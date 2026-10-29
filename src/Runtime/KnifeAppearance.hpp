@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nskinzcs2::runtime
 {
@@ -205,6 +206,8 @@ struct KnifeAnimationRemapKey
 };
 
 KnifeSlotMode ResolveKnifeSlotMode(const nskinzcs2::model::KnifeProfile& profile) noexcept;
+bool KnifeProfileUsesLiveFinish(const nskinzcs2::model::KnifeProfile& profile) noexcept;
+void RestrictKnifeProfilesToLiveFinish(std::vector<nskinzcs2::model::KnifeProfile>& profiles) noexcept;
 bool KnifeProfileRequiresModelDefinition(KnifeSlotMode mode) noexcept;
 KnifeAppearanceRequest BuildKnifeAppearanceRequest(const nskinzcs2::model::KnifeProfile& profile) noexcept;
 // Production cosmetic request: a model selection must not alter material work.

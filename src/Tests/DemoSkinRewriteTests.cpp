@@ -43,6 +43,18 @@ void RunDemoSkinRewriteTests()
         runtime::BuildDefaultDemoSkinRewritePlan(config).passes.empty(),
         "empty config must not create a demo rewrite pass");
 
+    model::ConfigDocument live_finish_config;
+    model::KnifeProfile live_finish;
+    live_finish.enabled = true;
+    live_finish.xuid = 76561198800578327ull;
+    live_finish.mode = model::KnifeProfileMode::FinishOnly;
+    live_finish.model_definition = 507; // Stale hidden selection must not become a reconstruction request.
+    live_finish.paint_kit = 568;
+    live_finish_config.knife_profiles.push_back(live_finish);
+    const auto live_finish_plan = runtime::BuildDefaultDemoSkinRewritePlan(live_finish_config);
+    Check(live_finish_plan.passes.empty() && live_finish_plan.knife_item_count == 0,
+        "finish-only knife texture changes must use live Demo patching exclusively");
+
     model::ConfigDocument keychain_only;
     model::KeychainProfile charm;
     charm.enabled = true;

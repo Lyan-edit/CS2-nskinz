@@ -43,6 +43,12 @@
 #pragma comment(lib, "d3d11.lib")
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#ifdef NSKINZCS2_UI_CAPTURE
+bool CompleteUiPreviewCapture(ID3D11Device*, ID3D11DeviceContext*, IDXGISwapChain*);
+bool UiPreviewFailOnce(const char* phase);
+bool UiPreviewRetryAfterFailure();
+bool UiPreviewDocumentationCapture();
+#endif
 
 namespace
 {
@@ -129,8 +135,10 @@ std::filesystem::path ResolveConfigPath()
         reinterpret_cast<LPCWSTR>(&anchor),
         &module);
 
-    std::wstring buffer(MAX_PATH, L'\0');
+    std::wstring buffer(32768, L'\0');
     const auto length = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size())
+        throw std::runtime_error("Could not resolve the control-panel module/configuration path.");
     buffer.resize(length);
     return std::filesystem::path(buffer).parent_path() / L"nSkinzCS2.json";
 }
@@ -1071,17 +1079,18 @@ bool ComboKeychainByIntent(
 std::optional<std::filesystem::path> ResolveChineseUiFontPath()
 {
     static constexpr std::array<const wchar_t*, 5> kCandidates {
-        L"C:\\Windows\\Fonts\\msyh.ttc",
-        L"C:\\Windows\\Fonts\\msyhl.ttc",
-        L"C:\\Windows\\Fonts\\msyhbd.ttc",
-        L"C:\\Windows\\Fonts\\simhei.ttf",
-        L"C:\\Windows\\Fonts\\simsun.ttc",
+        L"Fonts\\msyh.ttc", L"Fonts\\msyhl.ttc", L"Fonts\\msyhbd.ttc",
+        L"Fonts\\simhei.ttf", L"Fonts\\simsun.ttc",
     };
-
+    std::wstring windows_directory(32768, L'\0');
+    const auto length = GetWindowsDirectoryW(windows_directory.data(), static_cast<UINT>(windows_directory.size()));
+    if (length == 0 || length >= windows_directory.size()) return std::nullopt;
+    windows_directory.resize(length);
     for (const auto* candidate : kCandidates)
     {
-        const std::filesystem::path path(candidate);
-        if (std::filesystem::exists(path))
+        const auto path = std::filesystem::path(windows_directory) / candidate;
+        std::error_code error;
+        if (std::filesystem::is_regular_file(path, error))
         {
             return path;
         }
@@ -1140,7 +1149,7 @@ public:
         }
 
         working_config_dirty_ = false;
-        RefreshWorkshopMaps();
+        Logger::Info(L"UI controller initialized; Workshop discovery is deferred until the map tab is opened.");
     }
 
     ~WindowController()
@@ -1148,9 +1157,10 @@ public:
         Cleanup();
     }
 
-    int Run()
+    int Run(const bool reopen_after_failure = false)
     {
         Logger::Info(L"UI thread started in lazy-init mode. Press Insert to create the tool window.");
+        if (reopen_after_failure) HandleInsertToggle(true);
 
         MSG message {};
         while (!stop_requested_.load() && !state_.ShutdownRequested())
@@ -1167,6 +1177,9 @@ public:
             }
 
             HandleInsertToggle();
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (!stop_requested_.load() && UiPreviewRetryAfterFailure()) HandleInsertToggle(true);
+#endif
 
             if (resources_created_ && state_.WindowVisible())
             {
@@ -1208,14 +1221,22 @@ private:
         }
         window_class_registered_ = true;
 
+        int window_width = 1100, window_height = 760;
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewDocumentationCapture())
+        {
+            window_width = 1400;
+            window_height = 1500;
+        }
+#endif
         hwnd_ = CreateWindowW(
             kWindowClassName,
             kWindowTitle,
             WS_OVERLAPPEDWINDOW,
             100,
             100,
-            1100,
-            760,
+            window_width,
+            window_height,
             nullptr,
             nullptr,
             window_class.hInstance,
@@ -1226,7 +1247,11 @@ private:
             Logger::Error(L"Failed to create nSkinzCS2 UI window.");
             return false;
         }
-        if (!CreateDeviceD3D())
+        bool device_ready = CreateDeviceD3D();
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewFailOnce("resources-return")) device_ready = false;
+#endif
+        if (!device_ready)
         {
             Logger::Error(L"Failed to create D3D11 device for UI window.");
             Cleanup();
@@ -1235,6 +1260,11 @@ private:
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        imgui_context_created_ = true;
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewFailOnce("resources")) throw std::runtime_error("UI smoke: partial-resource initialization fault");
+#endif
+        Logger::Info(L"UI initialization phase: fonts/style.");
         ConfigureFonts();
         ImGui::StyleColorsDark();
         ApplyStyle();
@@ -1245,15 +1275,14 @@ private:
             Cleanup();
             return false;
         }
+        imgui_win32_initialized_ = true;
         if (!ImGui_ImplDX11_Init(device_, device_context_))
         {
             Logger::Error(L"ImGui D3D11 backend initialization failed.");
-            ImGui_ImplWin32_Shutdown();
-            ImGui::DestroyContext();
             Cleanup();
             return false;
         }
-        imgui_initialized_ = true;
+        imgui_dx11_initialized_ = true;
 
         ShowWindow(hwnd_, SW_HIDE);
         UpdateWindow(hwnd_);
@@ -1309,12 +1338,20 @@ private:
             device_context_->ClearState();
         }
 
-        if (imgui_initialized_)
+        if (imgui_dx11_initialized_)
         {
             ImGui_ImplDX11_Shutdown();
+            imgui_dx11_initialized_ = false;
+        }
+        if (imgui_win32_initialized_)
+        {
             ImGui_ImplWin32_Shutdown();
+            imgui_win32_initialized_ = false;
+        }
+        if (imgui_context_created_)
+        {
             ImGui::DestroyContext();
-            imgui_initialized_ = false;
+            imgui_context_created_ = false;
         }
 
         CleanupRenderTarget();
@@ -1444,17 +1481,17 @@ private:
         CreateRenderTarget();
     }
 
-    void HandleInsertToggle()
+    void HandleInsertToggle(const bool reopen_after_failure = false)
     {
         const bool down = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
-        if (down && !last_insert_state_)
+        if (reopen_after_failure || (down && !last_insert_state_))
         {
             if (!resources_created_)
             {
                 if (!CreateDeviceIndependentResources())
                 {
                     state_.SetWindowVisible(false);
-                    Logger::Error(L"UI initialization failed after Insert. The tool window stayed disabled to keep CS2 stable.");
+                    Logger::Error(L"UI initialization failed after Insert. Release Insert and press again to retry; see the initialization error above.");
                     last_insert_state_ = down;
                     return;
                 }
@@ -1462,15 +1499,19 @@ private:
                 Logger::Info(L"UI resources initialized on demand after Insert.");
             }
 
-            const bool new_visibility = !state_.WindowVisible();
+            const bool new_visibility = reopen_after_failure || !state_.WindowVisible();
             state_.SetWindowVisible(new_visibility);
             if (hwnd_ != nullptr)
             {
+#ifdef NSKINZCS2_UI_CAPTURE
+                ShowWindow(hwnd_, SW_HIDE);
+#else
                 ShowWindow(hwnd_, new_visibility ? SW_SHOW : SW_HIDE);
                 if (new_visibility)
                 {
                     SetForegroundWindow(hwnd_);
                 }
+#endif
             }
         }
 
@@ -1536,6 +1577,13 @@ private:
         device_context_->OMSetRenderTargets(1, &render_target_view_, nullptr);
         device_context_->ClearRenderTargetView(render_target_view_, clear_color);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (CompleteUiPreviewCapture(device_, device_context_, swap_chain_))
+        {
+            state_.RequestShutdown();
+            return;
+        }
+#endif
         const auto present_result = swap_chain_->Present(1, 0);
         if (FAILED(present_result))
         {
@@ -2025,15 +2073,6 @@ private:
     void DrawKnifeProfileEditor(const Catalog& catalog, const nskinzcs2::runtime::Status& status)
     {
         auto& profile = CurrentKnifeProfile();
-        const bool runtime_finish_only_active =
-            status.knife_runtime_path == L"Knife finish-only runtime path active";
-        const bool runtime_model_swap_active =
-            status.knife_runtime_path == L"Knife model swap active";
-        const bool runtime_model_swap_degraded =
-            status.knife_runtime_path == L"Knife model swap degraded";
-        const bool runtime_degraded = runtime_model_swap_degraded && !status.knife_runtime_reason.empty();
-        const bool runtime_model_development =
-            status.knife_runtime_path == L"Independent knife model (experimental)";
 
         char name_buffer[64] {};
         CopyToBuffer(profile.name, name_buffer, sizeof(name_buffer));
@@ -2157,45 +2196,15 @@ private:
         {
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeModelRequired));
         }
-        else if (model_and_finish_requested && runtime_model_development)
+        else if (model_and_finish_requested)
         {
             ImGui::TextColored(ImVec4(0.94f, 0.68f, 0.25f, 1.0f), "%s", Ui(UiTextId::KnifeModelDevelopmentPending));
+        }
+        else
+        {
+            ImGui::TextWrapped("%s", Ui(UiTextId::KnifeFinishOnlyDescription));
             if (!status.knife_runtime_reason.empty())
                 ImGui::TextWrapped("%s", Narrow(status.knife_runtime_reason).c_str());
-        }
-        else if (runtime_model_swap_active)
-        {
-            ImGui::TextColored(
-                ImVec4(0.42f, 0.82f, 0.58f, 1.0f),
-                "%s",
-                Ui(UiTextId::KnifeModelSwapActive));
-            if (!status.knife_runtime_reason.empty())
-            {
-                ImGui::TextWrapped("%s", Narrow(status.knife_runtime_reason).c_str());
-            }
-        }
-        else if (runtime_degraded)
-        {
-            ImGui::TextColored(
-                ImVec4(0.94f, 0.68f, 0.25f, 1.0f),
-                "%s",
-                Ui(UiTextId::KnifeModelSwapDegraded));
-            ImGui::TextWrapped("%s", Narrow(status.knife_runtime_reason).c_str());
-        }
-        else if (runtime_finish_only_active || profile.mode == KnifeProfileMode::FinishOnly)
-        {
-            ImGui::TextColored(
-                ImVec4(0.42f, 0.82f, 0.58f, 1.0f),
-                "%s",
-                Ui(UiTextId::KnifeFinishOnlyRuntime));
-            ImGui::TextWrapped(
-                model_and_finish_requested
-                    ? Ui(UiTextId::KnifeFinishOnlyFallback)
-                    : Ui(UiTextId::KnifeFinishOnlyDescription));
-        }
-        else if (!status.knife_runtime_path.empty())
-        {
-            ImGui::TextDisabled("%s", Narrow(status.knife_runtime_path).c_str());
         }
     }
 
@@ -2498,6 +2507,28 @@ private:
 
     void RefreshWorkshopMaps()
     {
+        workshop_scan_attempted_ = true;
+        try
+        {
+            RefreshWorkshopMapsImpl();
+        }
+        catch (const std::exception& exception)
+        {
+            const auto diagnostic = L"Workshop discovery failed; the control panel remains available. " +
+                Wide(exception.what());
+            workshop_scan_.diagnostics.push_back(diagnostic);
+            Logger::Warn(diagnostic);
+        }
+        catch (...)
+        {
+            const std::wstring diagnostic = L"Workshop discovery raised an unknown exception; the control panel remains available.";
+            workshop_scan_.diagnostics.push_back(diagnostic);
+            Logger::Warn(diagnostic);
+        }
+    }
+
+    void RefreshWorkshopMapsImpl()
+    {
         const auto selected_id = working_config_.map_remap.workshop_id;
         const auto selected_map = working_config_.map_remap.target_map_name;
         workshop_scan_ = nskinzcs2::runtime::DiscoverSubscribedWorkshopMaps(external_runtime_process_id_);
@@ -2577,6 +2608,7 @@ private:
 
     void DrawMapRemapEditor(const nskinzcs2::runtime::Status& status)
     {
+        if (!workshop_scan_attempted_) RefreshWorkshopMaps();
         auto& profile = working_config_.map_remap;
         if (ImGui::Button(Ui(UiTextId::MapRescan)))
         {
@@ -3474,6 +3506,7 @@ private:
         ImGui::SameLine();
         if (ImGui::Button(Ui(UiTextId::Save), ImVec2(width - 4.0f, 30.0f)))
         {
+            if (working_config_.map_remap.enabled && !workshop_scan_attempted_) RefreshWorkshopMaps();
             std::wstring validation_issue;
             if (!TryValidateKnifeProfilesForApply(working_config_, catalog, validation_issue) ||
                 !TryValidateGloveProfilesForApply(working_config_, catalog, validation_issue) ||
@@ -3602,6 +3635,9 @@ private:
 
     bool PublishWorkingConfigUpdate(const wchar_t* source)
     {
+        // Preserve selected-map metadata/migration before an explicit apply,
+        // while keeping optional disk discovery out of UI startup.
+        if (working_config_.map_remap.enabled && !workshop_scan_attempted_) RefreshWorkshopMaps();
         const auto catalog_snapshot = state_.SnapshotCatalogShared();
         const auto& catalog = *catalog_snapshot;
         std::wstring validation_issue;
@@ -3733,7 +3769,9 @@ private:
             ShowWindow(hwnd, SW_HIDE);
             return 0;
         case WM_DESTROY:
-            PostQuitMessage(0);
+            // Partial device/font cleanup destroys a transient window too.
+            // It must not terminate the Insert listener needed for retry.
+            if (stop_requested_.load() || state_.ShutdownRequested()) PostQuitMessage(0);
             return 0;
         default:
             break;
@@ -3764,12 +3802,15 @@ private:
     bool sticker_preview_dragging_ = false;
     std::chrono::steady_clock::time_point sticker_live_preview_due_ {};
     WorkshopMapScanResult workshop_scan_;
+    bool workshop_scan_attempted_ = false;
     std::filesystem::path demo_skin_source_path_;
     std::filesystem::path demo_skin_last_observed_path_;
     std::future<nskinzcs2::runtime::DemoSkinRewriteResult> demo_skin_rewrite_future_;
     nskinzcs2::runtime::DemoSkinRewriteResult demo_skin_rewrite_result_;
     bool last_insert_state_ = false;
-    bool imgui_initialized_ = false;
+    bool imgui_context_created_ = false;
+    bool imgui_win32_initialized_ = false;
+    bool imgui_dx11_initialized_ = false;
     bool resources_created_ = false;
     bool window_class_registered_ = false;
     bool first_frame_started_ = false;
@@ -3800,7 +3841,7 @@ nskinzcs2::MainWindow::~MainWindow()
     Stop();
 }
 
-void nskinzcs2::MainWindow::Start()
+void nskinzcs2::MainWindow::Start(const bool open_on_start)
 {
     if (thread_.joinable())
     {
@@ -3808,6 +3849,7 @@ void nskinzcs2::MainWindow::Start()
     }
 
     stop_requested_.store(false);
+    open_on_start_ = open_on_start;
     thread_ = std::thread(&MainWindow::ThreadMain, this);
 }
 
@@ -3836,25 +3878,50 @@ void nskinzcs2::MainWindow::ThreadMain()
 
 void nskinzcs2::MainWindow::ThreadMainImpl()
 {
-    try
+    bool reopen_after_failure = open_on_start_;
+    while (!stop_requested_.load() && !state_.ShutdownRequested())
     {
-        WindowController controller(
-            state_,
-            stop_requested_,
-            external_runtime_process_id_);
-        controller.Run();
-    }
-    catch (const std::exception& exception)
-    {
-        (void)exception;
-        Logger::Error(L"UI thread raised a C++ exception and was disabled.");
-        stop_requested_.store(true);
+        const wchar_t* phase = L"controller construction";
+        try
+        {
+            Logger::Info(L"UI startup phase: controller construction.");
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewFailOnce("construction")) throw std::runtime_error("UI smoke: controller construction fault");
+#endif
+            WindowController controller(state_, stop_requested_, external_runtime_process_id_);
+            phase = L"Insert/window/render loop";
+            controller.Run(reopen_after_failure);
+            return;
+        }
+        catch (const std::exception& exception)
+        {
+            Logger::Error(std::wstring(L"UI C++ exception during ") + phase + L": " + Wide(exception.what()));
+        }
+        catch (...)
+        {
+            Logger::Error(std::wstring(L"Unknown UI C++ exception during ") + phase + L".");
+        }
         state_.SetWindowVisible(false);
-    }
-    catch (...)
-    {
-        Logger::Error(L"UI thread raised an unknown C++ exception and was disabled.");
-        stop_requested_.store(true);
-        state_.SetWindowVisible(false);
+        Logger::Warn(L"UI stopped safely. Release Insert, then press it again to retry; CS2 remains isolated from the panel.");
+        MSG discarded {};
+        while (PeekMessageW(&discarded, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {}
+        // Retry only on a NEW press; a persistent startup fault must not create
+        // an automatic exception/device-creation loop or leave a dead host.
+        bool previous_down = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
+        while (!stop_requested_.load() && !state_.ShutdownRequested())
+        {
+            const bool down = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
+            bool retry = down && !previous_down;
+#ifdef NSKINZCS2_UI_CAPTURE
+            retry = retry || UiPreviewRetryAfterFailure();
+#endif
+            if (retry)
+            {
+                reopen_after_failure = true;
+                break;
+            }
+            previous_down = down;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
     }
 }

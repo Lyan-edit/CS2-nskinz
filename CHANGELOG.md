@@ -1,5 +1,17 @@
 # Changelog / 更新记录
 
+## v0.6.6-beta — 2026-10-29
+
+- Fixed knife routing: Model + Finish uses Temporary Demo only; Finish-only hot-updates the current texture in source/generated demos. Modern HUD materials use the verified world carrier, cached by generation and appearance.
+- 修复刀具分流：模型＋饰面只走临时 Demo，仅饰面在当前 Demo 热修；现代 HUD 从已验证世界载体同步材质，按代际和外观缓存。
+- Recover from UI C++ exceptions on a fresh Insert press, log the exception phase/message, defer and isolate Workshop discovery, and clean up partial graphics initialization.
+- 面板异常后可重新按 Insert 恢复，日志记录阶段和具体消息；工坊扫描按需隔离，图形初始化中途失败正确清理。
+- Updated the release cover and real current-panel capture; added artwork/version/provenance checks for every release. Preserved default T/CT glove and keychain reconstruction and the existing embedded rewriter.
+- 更新版本封面及真实面板截图，加入每次发版图片一致性检查；保留默认 T／CT 手套和挂件重建，内嵌重写器不变。
+- Full native regression, four real-UI startup/recovery cases and bilingual loader/offscreen gates pass. Gameplay and physical Insert behavior on the reporting user's PC remain acceptance items. Compatibility baseline remains CS2 2000935.
+
+See [bilingual release notes](docs/releases/v0.6.6-beta.md).
+
 ## v0.6.5 — 2026-10-27
 
 - Fixed Temporary Demo knife model changes leaving the original killfeed identity. Resolve each death's attacker/team and synchronize the weapon token plus item/faux-item IDs using dynamic event descriptors and 22 checked knife names.

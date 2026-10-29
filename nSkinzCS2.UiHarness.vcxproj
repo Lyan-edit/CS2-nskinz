@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseZhCn|x64">
+      <Configuration>ReleaseZhCn</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{791F6011-4513-42A3-BDE5-033663194BC7}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>nSkinzCS2</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>nSkinzCS2</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseZhCn|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='ReleaseZhCn|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>NSKINZCS2_UI_CAPTURE;NSKINZCS2_DX11_EMBEDDED_SHADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <PropertyGroup>
+    <IntDir>$(ProjectDir)build\ui-panel-harness\$(Configuration)\obj\</IntDir>
+    <OutDir>$(ProjectDir)build\ui-panel-harness\$(Configuration)\</OutDir>
+    <TargetName>nSkinzCS2.UiPreview</TargetName>
+    <VCToolsVersion>14.44.35207</VCToolsVersion>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\json;$(ProjectDir)third_party\MinHook\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseZhCn|x64'">
+    <IntDir>$(ProjectDir)build\ui-panel-harness\$(Configuration)\obj\</IntDir>
+    <OutDir>$(ProjectDir)build\ui-panel-harness\$(Configuration)\</OutDir>
+    <TargetName>nSkinzCS2.UiPreview</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader />
+      <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;NSKINZCS2_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;user32.lib;gdi32.lib;shell32.lib;ole32.lib;windowscodecs.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>MaxSpeed</Optimization>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <PrecompiledHeader />
+      <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;NSKINZCS2_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;user32.lib;gdi32.lib;shell32.lib;ole32.lib;windowscodecs.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseZhCn|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>MaxSpeed</Optimization>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <PrecompiledHeader />
+      <AdditionalOptions>/utf-8 /FS %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;NSKINZCS2_EXPORTS;NSKINZCS2_UI_LANG_ZH_CN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;user32.lib;gdi32.lib;shell32.lib;ole32.lib;windowscodecs.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Core\AppState.hpp" />
+    <ClInclude Include="src\Core\BuildConfig.hpp" />
+    <ClInclude Include="src\Core\Config.hpp" />
+    <ClInclude Include="src\Core\Log.hpp" />
+    <ClInclude Include="src\Core\StickerPlacement.hpp" />
+    <ClInclude Include="src\Cs2\Catalog.hpp" />
+    <ClInclude Include="src\Cs2\CatalogStore.hpp" />
+    <ClInclude Include="src\Cs2\Compatibility.hpp" />
+    <ClInclude Include="src\Cs2\GlobalResourceSwapper.hpp" />
+    <ClInclude Include="src\Cs2\Runtime.hpp" />
+    <ClInclude Include="src\Runtime\GloveAppearance.hpp" />
+    <ClInclude Include="src\Runtime\DemoSkinRewrite.hpp" />
+    <ClInclude Include="src\Runtime\GloveVisualRefresh.hpp" />
+    <ClInclude Include="src\Runtime\KnifeAnimation.hpp" />
+    <ClInclude Include="src\Runtime\KnifeModel.hpp" />
+    <ClInclude Include="src\Runtime\KnifeGraph.hpp" />
+    <ClInclude Include="src\Runtime\KnifeResources.hpp" />
+    <ClInclude Include="src\Runtime\KnifeSerialization.hpp" />
+    <ClInclude Include="src\Runtime\KnifeNative.hpp" />
+    <ClInclude Include="src\Runtime\KnifeLifecycle.hpp" />
+    <ClInclude Include="src\Runtime\KnifeFinish.hpp" />
+    <ClInclude Include="src\Runtime\KnifePair.hpp" />
+    <ClInclude Include="src\Runtime\KnifeUpdateProbe.hpp" />
+    <ClInclude Include="src\Runtime\KnifeAppearance.hpp" />
+    <ClInclude Include="src\Runtime\WeaponAppearance.hpp" />
+    <ClInclude Include="src\Runtime\WeaponMaterialInit.hpp" />
+    <ClInclude Include="src\Resources\ResourceIds.h" />
+    <ClInclude Include="src\Runtime\MapRemap.hpp" />
+    <ClInclude Include="src\Runtime\RadarAlphaFix.hpp" />
+    <ClInclude Include="src\Runtime\RadarNativeCompiler.hpp" />
+    <ClInclude Include="src\Runtime\Shaders\RadarDecodePixel.generated.hpp" />
+    <ClInclude Include="src\Runtime\Shaders\RadarDecodeVertex.generated.hpp" />
+    <ClInclude Include="src\Runtime\WorkshopMaps.hpp" />
+    <ClInclude Include="src\UI\MainWindow.hpp" />
+    <ClInclude Include="src\UI\ExternalUiHost.hpp" />
+    <ClInclude Include="src\UI\StickerPreviewMetrics.hpp" />
+    <ClInclude Include="src\UI\StickerPreviewPlacement.generated.hpp" />
+    <ClInclude Include="src\UI\UiText.hpp" />
+    <ClInclude Include="src\UI\WeaponPreviewGeometry.generated.hpp" />
+    <ClInclude Include="src\UI\Shaders\ImGuiVertex.generated.hpp" />
+    <ClInclude Include="src\UI\Shaders\ImGuiPixel.generated.hpp" />
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="third_party\imgui\imconfig.h" />
+    <ClInclude Include="third_party\imgui\imgui.h" />
+    <ClInclude Include="third_party\imgui\imgui_internal.h" />
+    <ClInclude Include="third_party\MinHook\include\MinHook.h" />
+    <ClInclude Include="third_party\json\json.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="tools\UiPanelHarness.cpp" />
+    <ClCompile Include="src\Core\Config.cpp" />
+    <ClCompile Include="src\Core\Log.cpp" />
+    <ClCompile Include="src\Cs2\Catalog.cpp" />
+    <ClCompile Include="src\Cs2\CatalogStore.cpp" />
+    <ClCompile Include="src\Cs2\Compatibility.cpp" />
+    <ClCompile Include="src\Cs2\GlobalResourceSwapper.cpp" />
+    <ClCompile Include="src\Cs2\Runtime.cpp" />
+    <ClCompile Include="src\Runtime\GloveAppearance.cpp" />
+    <ClCompile Include="src\Runtime\DemoSkinRewrite.cpp" />
+    <ClCompile Include="src\Runtime\GloveVisualRefresh.cpp" />
+    <ClCompile Include="src\Runtime\KnifeAnimation.cpp" />
+    <ClCompile Include="src\Runtime\KnifeModel.cpp" />
+    <ClCompile Include="src\Runtime\KnifeGraph.cpp" />
+    <ClCompile Include="src\Runtime\KnifeResources.cpp" />
+    <ClCompile Include="src\Runtime\KnifeSerialization.cpp" />
+    <ClCompile Include="src\Runtime\KnifeNative.cpp" />
+    <ClCompile Include="src\Runtime\KnifeLifecycle.cpp" />
+    <ClCompile Include="src\Runtime\KnifePair.cpp" />
+    <ClCompile Include="src\Runtime\KnifeUpdateProbe.cpp" />
+    <ClCompile Include="src\Runtime\KnifeAppearance.cpp" />
+    <ClCompile Include="src\Runtime\WeaponAppearance.cpp" />
+    <ClCompile Include="src\Runtime\MapRemap.cpp" />
+    <ClCompile Include="src\Runtime\RadarAlphaFix.cpp" />
+    <ClCompile Include="src\Runtime\RadarNativeCompiler.cpp" />
+    <ClCompile Include="src\Runtime\WorkshopMaps.cpp" />
+    <ClCompile Include="src\UI\MainWindow.cpp" />
+    <ClCompile Include="src\UI\StickerPreviewPlacement.generated.cpp">
+      <Optimization>Disabled</Optimization>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+    <ClCompile Include="src\UI\ExternalUiHost.cpp" />
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp" />
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="third_party\imgui\imgui.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="third_party\MinHook\src\buffer.c" />
+    <ClCompile Include="third_party\MinHook\src\hook.c" />
+    <ClCompile Include="third_party\MinHook\src\trampoline.c" />
+    <ClCompile Include="third_party\MinHook\src\hde\hde32.c" />
+    <ClCompile Include="third_party\MinHook\src\hde\hde64.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\UI\Shaders\ImGuiVertex.hlsl" />
+    <None Include="src\UI\Shaders\ImGuiPixel.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\Resources\NskinDemoRewriter.rc" />
+    <ResourceCompile Include="src\Resources\RadarReferences.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

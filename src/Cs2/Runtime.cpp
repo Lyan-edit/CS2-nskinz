@@ -10226,6 +10226,10 @@ struct PendingWeaponRefreshRequest
     std::optional<nskinzcs2::model::KeychainProfile> keychain_profile;
 };
 
+struct ClientSchemaOffsets;
+bool SynchronizeIndependentKnifeFinishAttributes(void* entity, void* item,
+    const ClientSchemaOffsets& offsets, const nskinzcs2::model::CosmeticProfile& profile);
+
 struct TrackedWeaponAppearanceRestorePoint
 {
     int carrier_entity_index = -1;
@@ -10314,6 +10318,7 @@ struct StandardWeaponAppearanceEpoch
     StandardWeaponEntityEpoch render;
     StandardWeaponEntityEpoch hud;
     std::uint64_t failed_material_signature = 0;
+    std::uint64_t knife_hud_material_signature = 0;
 };
 
 struct RenderedWorldWeaponTrace
@@ -16005,6 +16010,7 @@ bool TryTrackStandardWeaponAppearanceEpoch(
         // into another expensive clear/generate cycle for the same AK entity.
         g_hook_state.applied_weapon_signatures.erase(carrier_index);
         previous.failed_material_signature = 0;
+        previous.knife_hud_material_signature = 0;
     }
     if (carrier_changed) { previous = {}; }
     previous.carrier = current.carrier;
@@ -16018,7 +16024,7 @@ bool TryTrackStandardWeaponAppearanceEpoch(
 bool TryResolveStandardWeaponHudRender(
     const std::vector<void*>& entities, const RuntimePlayerBinding& player,
     const std::uint32_t weapon_handle, void* world, const ClientSchemaOffsets& offsets,
-    int& hud_index, void*& hud, void* entity_list = nullptr)
+    int& hud_index, void*& hud, void* entity_list = nullptr, const bool knife = false)
 {
     hud_index = -1;
     hud = nullptr;
@@ -16104,8 +16110,11 @@ bool TryResolveStandardWeaponHudRender(
         }
         std::string model_name;
         if (!TryReadEntityModelNameString(candidate, offsets, model_name) ||
-            !nskinzcs2::runtime::IsStandardWeaponHudRenderCandidate(
-                DescribeObservedPawnClassName(candidate), model_name, candidate_owner, weapon_handle, true, false))
+            !(knife
+                ? nskinzcs2::runtime::IsKnifeHudRenderCandidate(
+                    DescribeObservedPawnClassName(candidate), model_name, candidate_owner, weapon_handle, true, false)
+                : nskinzcs2::runtime::IsStandardWeaponHudRenderCandidate(
+                    DescribeObservedPawnClassName(candidate), model_name, candidate_owner, weapon_handle, true, false)))
         {
             continue;
         }
@@ -16184,6 +16193,7 @@ bool TryBuildRenderedWorldWeaponTrace(
     int world_definition = 0;
     const bool standard_weapon = TryReadItemDefinitionIndex(trace.owned_weapon_item_view, offsets, world_definition) &&
         IsStandardWeaponBaseItem(world_definition);
+    const bool knife_weapon = nskinzcs2::runtime::FindKnifeModelAsset(world_definition) != nullptr;
     if (owned_weapon_handle != kInvalidEntityHandle && offsets.base_owner_entity != 0)
     {
         for (std::size_t index = 0; index < entity_cache.size(); ++index)
@@ -16201,7 +16211,7 @@ bool TryBuildRenderedWorldWeaponTrace(
                 continue;
             }
 
-            if (standard_weapon && DescribeObservedPawnClassName(candidate) == L"C_CS2HudModelWeapon")
+            if (DescribeObservedPawnClassName(candidate) == L"C_CS2HudModelWeapon")
             {
                 continue; // Even an indexed AG2 HUD object is render-only, not a world econ carrier.
             }
@@ -16221,9 +16231,9 @@ bool TryBuildRenderedWorldWeaponTrace(
         }
     }
 
-    trace.hud_render_only_verified = standard_weapon && TryResolveStandardWeaponHudRender(
+    trace.hud_render_only_verified = (standard_weapon || knife_weapon) && TryResolveStandardWeaponHudRender(
         entity_cache, player_binding, owned_weapon_handle, owned_weapon_entity, offsets,
-        trace.hud_weapon_entity_index, trace.hud_weapon_entity, entity_list);
+        trace.hud_weapon_entity_index, trace.hud_weapon_entity, entity_list, knife_weapon);
     // An AG2 C_CS2HudModelWeapon has a render model but no CEconItemView. Never
     // fabricate one by adding the CEconEntity offset to that shorter object.
     const auto resolved_hud_entity = trace.hud_render_only_verified || (!standard_weapon && (
@@ -16245,6 +16255,15 @@ bool TryBuildRenderedWorldWeaponTrace(
             trace.hud_weapon_entity)));
     if (resolved_hud_entity)
     {
+        // A legacy fallback may locate a modern render-only object without
+        // proving the strict arms/owner chain. Keep that object read-only.
+        if (!trace.hud_render_only_verified &&
+            DescribeObservedPawnClassName(trace.hud_weapon_entity) == L"C_CS2HudModelWeapon")
+        {
+            trace.hud_weapon_entity = nullptr;
+            trace.hud_weapon_entity_index = -1;
+            return true;
+        }
         trace.hud_weapon_item_view = trace.hud_render_only_verified
             ? nullptr : ResolveWeaponItemView(trace.hud_weapon_entity, offsets);
         trace.owned_and_hud_share_item_view =
@@ -23848,7 +23867,7 @@ void LogKnifeExactApplyResult(
     const auto signature =
         BuildKnifeProfileApplySignature(request, xuid, current_definition_index, kTargetTagWeaponCanonical) ^ 0x3305ull;
     std::wstringstream stream;
-    stream << L"Knife exact apply succeeded/queued for XUID " << xuid
+    stream << L"Knife exact finish fields handled; material completion reported separately for XUID " << xuid
         << L" on entity " << entity_index << L'.';
     LogProfileDiagnosticOnce(signature, stream.str());
 }
@@ -53716,6 +53735,18 @@ bool TryProcessPendingWeaponRefreshRequests(
     bool dispatched_knife_request = false;
     std::size_t completed_request_count = 0;
 
+    // Only explicit finish-only profiles can initialize late world/HUD paint
+    // slots. Model+finish is owned by Temporary Demo reconstruction exclusively.
+    std::unordered_set<std::uint64_t> live_finish_xuids;
+    if (g_hook_state.app_state != nullptr &&
+        std::any_of(requests.begin(), requests.end(), [](const auto& request)
+            { return IsKnifeProfile(request.profile); }))
+    {
+        for (const auto& profile : g_hook_state.app_state->SnapshotConfig().knife_profiles)
+            if (nskinzcs2::runtime::KnifeProfileUsesLiveFinish(profile))
+                live_finish_xuids.insert(profile.xuid);
+    }
+
     for (const auto& request : requests)
     {
         const auto is_material_target = IsMaterialRefreshTarget(request.target);
@@ -53726,6 +53757,12 @@ bool TryProcessPendingWeaponRefreshRequests(
         const auto needs_skin_refresh = NeedsWeaponSkinRefresh(request.profile, keychain_profile);
         const auto trace_watched_knife = ShouldTraceWatchedKnifeDiagnostic(request.profile);
         const auto knife_request = IsKnifeProfile(request.profile);
+        if (knife_request && DescribeObservedPawnClassName(request.econ_entity) == L"C_CS2HudModelWeapon")
+        {
+            LogProfileDiagnosticOnce(request.desired_signature ^ 0x4855444E4F45434Full,
+                L"Knife HUD is render-only; refusing Econ attribute writes or refresh on this object.");
+            continue;
+        }
         const auto standard_weapon_request = UsesTemporaryWorldWeaponRefreshModel(request.profile);
         const auto promote_refresh_attachment =
             ShouldPromoteWeaponRefreshAttachmentToRuntimeOwned(request.profile, keychain_profile);
@@ -53792,7 +53829,7 @@ bool TryProcessPendingWeaponRefreshRequests(
                 L"Standard-weapon material refresh rejected: existing attribute slots conflict with the requested appearance.");
             continue;
         }
-        const auto live_attribute_values_match =
+        auto live_attribute_values_match =
             !desired_refresh_attributes.empty() &&
             (knife_request
                 ? VerifyKnifeFinishRefreshAttributeValues(
@@ -53818,7 +53855,30 @@ bool TryProcessPendingWeaponRefreshRequests(
                 L"Reused completed material refresh for the unchanged appearance; no native regeneration dispatched.");
             continue;
         }
+        if (knife_request && needs_skin_refresh && !refresh_signature_matches &&
+            !live_attribute_values_match && live_finish_xuids.contains(request.profile.xuid) &&
+            knife_refresh_policy != nskinzcs2::runtime::KnifeRefreshHelperPolicy::Disabled)
+        {
+            // Late HUD entities often have fallback fields but no Econ paint
+            // nodes. Construct them through the engine's checked Schema/native
+            // append, never by installing an external vector. This makes the
+            // existing one-per-signature initialization gate applicable after
+            // the global Update window has already been consumed.
+            live_attribute_values_match = SynchronizeIndependentKnifeFinishAttributes(
+                request.econ_entity, effective_refresh_item_view, offsets, request.profile) &&
+                VerifyKnifeFinishRefreshAttributeValues(
+                    effective_refresh_item_view, offsets, request.profile, keychain_profile);
+            if (!live_attribute_values_match)
+            {
+                LogProfileDiagnosticOnce(request.desired_signature ^ 0x46494E534C4F5453ull,
+                    L"Knife finish pending: engine-owned paint/seed/wear initialization was not verified; no material refresh dispatched.");
+                continue;
+            }
+            LogProfileDiagnosticOnce(request.desired_signature ^ 0x46494E494E49544Cull,
+                L"Knife finish-only engine-owned attributes initialized for a new world/HUD appearance; model and animation state unchanged.");
+        }
         const auto verified_in_place_initialization_refresh =
+            knife_refresh_policy != nskinzcs2::runtime::KnifeRefreshHelperPolicy::Disabled &&
             nskinzcs2::runtime::ShouldAllowVerifiedInPlaceKnifeInitializationRefresh(
                 knife_request,
                 needs_skin_refresh,
@@ -58394,6 +58454,10 @@ bool VerifyWeaponAppearanceState(
     return true;
 }
 
+bool TrySynchronizeLiveKnifeHudMaterials(const RenderedWorldWeaponTrace& trace,
+    const ClientSchemaOffsets& offsets, const nskinzcs2::model::CosmeticProfile& profile,
+    std::uint64_t signature, std::wstring& issue);
+
 bool TryApplyStandardWeaponAppearancePipeline(
     void* entity_list,
     const int highest_live_entity_index,
@@ -58461,7 +58525,7 @@ bool TryApplyStandardWeaponAppearancePipeline(
         return false;
     }
 
-    if (IsStandardWeaponProfile(profile) &&
+    if ((IsStandardWeaponProfile(profile) || IsKnifeProfile(profile)) &&
         !TryTrackStandardWeaponAppearanceEpoch(binding.resolved.carrier_entity_index,
             binding.carrier_entity, binding.render_entity, binding.hud_entity, offsets))
     {
@@ -58470,7 +58534,7 @@ bool TryApplyStandardWeaponAppearancePipeline(
         return false;
     }
 
-    if (IsStandardWeaponProfile(profile))
+    if (IsStandardWeaponProfile(profile) || IsKnifeProfile(profile))
     {
         const auto epoch = g_hook_state.standard_weapon_appearance_epochs.find(binding.resolved.carrier_entity_index);
         if (epoch != g_hook_state.standard_weapon_appearance_epochs.end() &&
@@ -58478,7 +58542,7 @@ bool TryApplyStandardWeaponAppearancePipeline(
         {
             UpdateWeaponAppearanceTelemetry({}, {},
                 L"Weapon material initialization failed for this appearance; retry suspended until Update or a new entity generation", {});
-            return false;
+            return IsKnifeProfile(profile); // Handled, with retries suspended; no legacy fallback.
         }
     }
 
@@ -58663,6 +58727,18 @@ bool TryApplyStandardWeaponAppearancePipeline(
             trace.hud_weapon_item_view != nullptr,
             trace.owned_and_hud_share_item_view);
     constexpr bool track_knife_restore_point = false;
+    const auto synchronize_knife_hud = [&]()
+    {
+        if (!IsKnifeProfile(profile) || !payload.needs_refresh) return true;
+        std::wstring material_issue;
+        if (TrySynchronizeLiveKnifeHudMaterials(trace, offsets, profile, desired_signature, material_issue))
+            return true;
+        const auto detail = L"Knife finish pending: " + material_issue;
+        UpdateWeaponAppearanceTelemetry({}, {}, detail, {});
+        LogProfileDiagnosticOnce(desired_signature ^ 0x4B4E48454450454Eull ^
+            std::hash<std::wstring>{}(material_issue), detail);
+        return false;
+    };
     const std::wstring binding_line =
         L"Resolved weapon appearance binding: " +
         nskinzcs2::runtime::DescribeWeaponAppearanceBinding(binding.resolved) +
@@ -59103,6 +59179,7 @@ bool TryApplyStandardWeaponAppearancePipeline(
         {
             TryProcessPendingWeaponRefreshRequests(offsets, requests);
         }
+        if (!synchronize_knife_hud()) return true;
         try_apply_resource_backed_render_rebind();
         applied_entity_indices.insert(trace.owned_weapon_entity_index);
         applied_entity_indices.insert(binding.resolved.carrier_entity_index);
@@ -59339,6 +59416,7 @@ bool TryApplyStandardWeaponAppearancePipeline(
         {
             TryProcessPendingWeaponRefreshRequests(offsets, exact_apply_refresh_requests);
         }
+        if (!synchronize_knife_hud()) return true;
         applied_entity_indices.insert(trace.owned_weapon_entity_index);
         applied_entity_indices.insert(binding.resolved.carrier_entity_index);
         applied_entity_indices.insert(binding.resolved.render_entity_index);
@@ -82016,6 +82094,90 @@ bool ReadIndependentKnifeMaterialCounts(void* entity, const WeaponSkinRefreshBin
         primary >= 0 && primary <= 128 && companion >= 0 && companion <= 128;
 }
 
+bool TrySynchronizeLiveKnifeHudMaterials(const RenderedWorldWeaponTrace& trace,
+    const ClientSchemaOffsets& offsets, const nskinzcs2::model::CosmeticProfile& profile,
+    const std::uint64_t signature, std::wstring& issue)
+{
+    using namespace nskinzcs2::runtime;
+    issue.clear();
+    const auto pending = [&](const wchar_t* message) { issue = message; return false; };
+    if (!trace.hud_render_only_verified || trace.hud_weapon_entity == nullptr ||
+        trace.hud_weapon_item_view != nullptr || trace.owned_weapon_entity == nullptr)
+        return pending(L"waiting for an owner-verified render-only knife HUD; no fabricated HUD item view used.");
+    auto epoch = g_hook_state.standard_weapon_appearance_epochs.find(trace.owned_weapon_entity_index);
+    if (epoch == g_hook_state.standard_weapon_appearance_epochs.end() ||
+        !HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, trace.owned_weapon_entity_index, signature))
+        return pending(L"world knife native material initialization has not completed.");
+    const auto snapshot = epoch->second;
+    const auto same_pair = [&]()
+    {
+        StandardWeaponEntityEpoch world, hud;
+        std::uint32_t owner = kInvalidEntityHandle;
+        return ReadStandardWeaponCarrierEpoch(trace.owned_weapon_entity, offsets, world) &&
+            ReadStandardWeaponCarrierEpoch(trace.hud_weapon_entity, offsets, hud) &&
+            world == snapshot.carrier && hud == snapshot.hud &&
+            SafeReadField(trace.hud_weapon_entity, offsets.base_owner_entity, owner) && owner == world.handle;
+    };
+    if (!same_pair()) return pending(L"knife world/HUD generation changed; waiting for a fresh binding.");
+    if (snapshot.knife_hud_material_signature == signature) return true;
+    if (!IsHlaeOfflineRenderPassAuthorized()) return pending(L"waiting for the offline render-pass safe point.");
+    const auto module = GetModuleSpan(GetModuleHandleW(L"client.dll"));
+    if (!module) return pending(L"client module is unavailable.");
+    const auto client = reinterpret_cast<std::uintptr_t>(module->base);
+    auto& reader = GetIndependentKnifeSession().host;
+    if (!VerifyKnifeFinishEvidence(client, module->size, reader))
+        return pending(L"native knife material-copy evidence is not verified for this client.");
+    const auto& binding = g_hook_state.weapon_skin_refresh;
+    if (!g_hook_state.weapon_skin_refresh_ready.load() || binding.offset_patched ||
+        binding.standard_material_owner_offset != 0x610 || binding.original_offset != 0xAB0 ||
+        binding.original_companion_offset != 0xAC8 ||
+        reinterpret_cast<std::uintptr_t>(binding.standard_clear_materials) != client + 0x14E7AA0)
+        return pending(L"native knife material owner/clear ABI is not verified.");
+    std::string world_model, hud_model;
+    if (!TryReadEntityModelNameString(trace.owned_weapon_entity, offsets, world_model) ||
+        !TryReadEntityModelNameString(trace.hud_weapon_entity, offsets, hud_model) ||
+        FindKnifeModelAssetByPath(world_model) == nullptr ||
+        FindKnifeModelAssetByPath(world_model) != FindKnifeModelAssetByPath(hud_model))
+        return pending(L"current world/HUD knife models do not match; model changes are not allowed in finish-only mode.");
+    int primary[2] {}, companion[2] {};
+    const std::array entities {trace.owned_weapon_entity, trace.hud_weapon_entity};
+    for (std::size_t i = 0; i < entities.size(); ++i)
+    {
+        std::uintptr_t table = 0, apply = 0, changed = 0;
+        if (!SafeReadField(entities[i], binding.standard_material_owner_offset, table) ||
+            table < client || module->size < 32 || table - client > module->size - 32 ||
+            !SafeReadValue(reinterpret_cast<const void*>(table + 8), apply) ||
+            !SafeReadValue(reinterpret_cast<const void*>(table + 24), changed) ||
+            apply != client + kKnifeMaterialApplyRva || changed != client + kKnifeMaterialChangedRva ||
+            !ReadIndependentKnifeMaterialCounts(entities[i], binding, primary[i], companion[i]))
+            return pending(L"world/HUD composite owners failed native ABI validation.");
+    }
+    if (profile.paint_kit > 0 && primary[0] == 0)
+        return pending(L"world knife material generation is asynchronous; waiting without regenerating.");
+    const auto fail = [&](const wchar_t* message)
+    {
+        epoch->second.failed_material_signature = signature;
+        return pending(message);
+    };
+    // Only ref-counted material owners are touched. The HUD has no Econ item
+    // view, and this path never calls SetModel, subclass or animation updates.
+    if (!same_pair() || ((primary[1] || companion[1]) && !SafeInvokeVoidFunctionPointer(
+            binding.standard_clear_materials,
+            static_cast<std::uint8_t*>(trace.hud_weapon_entity) + binding.standard_material_owner_offset, true)) ||
+        !same_pair() || !SafeInvokeVoidFunctionPointer(reinterpret_cast<void*>(client + kKnifeCopyMaterialsRva),
+            static_cast<std::uint8_t*>(trace.owned_weapon_entity) + binding.standard_material_owner_offset,
+            static_cast<std::uint8_t*>(trace.hud_weapon_entity) + binding.standard_material_owner_offset, false))
+        return fail(L"native knife HUD material transfer failed; retries suspended until Update/new generation.");
+    if (!same_pair() || !ReadIndependentKnifeMaterialCounts(trace.hud_weapon_entity, binding, primary[1], companion[1]) ||
+        (profile.paint_kit > 0 ? primary[1] == 0 : primary[1] != 0 || companion[1] != 0))
+        return fail(L"knife HUD material transfer readback failed; no completion recorded.");
+    epoch->second.knife_hud_material_signature = signature;
+    RememberAppliedSignature(g_hook_state.refreshed_weapon_signatures, trace.hud_weapon_entity_index, signature);
+    LogProfileDiagnosticOnce(signature ^ 0x4845444D41544348ull,
+        L"Knife finish-only native world-to-HUD material transfer verified; model/animation unchanged, visual acceptance still required.");
+    return true;
+}
+
 enum class IndependentKnifeFinishResult { Pending, Applied, Failed };
 
 IndependentKnifeFinishResult RefreshIndependentKnifeFinish(const nskinzcs2::runtime::KnifeNativeContext& context,
@@ -83309,6 +83471,10 @@ void PollGameThreadStateModern()
         config_revision = g_hook_state.app_state->ConfigRevision();
     }
 
+    // Apply the mode contract before every early-exit, pre-arm and lifecycle
+    // path. Finish-only stays live on both original and generated recordings;
+    // model+finish never enters the injected model or finish fallback chains.
+    nskinzcs2::runtime::RestrictKnifeProfilesToLiveFinish(config.knife_profiles);
     const auto current_demo_file_path = SnapshotCurrentDemoFilePath();
     const auto generated_demo_skin =
         nskinzcs2::runtime::IsGeneratedDemoSkinPath(current_demo_file_path);
@@ -83320,7 +83486,6 @@ void PollGameThreadStateModern()
         // subclass/VData, model and animation transaction. Generated gloves
         // remain read-only even if playback or a later profile edit mismatches
         // the requested fields. Only another Demo rewrite may repair them.
-        for (auto& profile : config.knife_profiles) profile.enabled = false;
         int reconstructed_firearm_profiles = 0;
         int reconstructed_glove_profiles = 0;
         // Reconstructed stock firearms need the established live path once per
@@ -83351,7 +83516,7 @@ void PollGameThreadStateModern()
         if (!g_hook_state.demo_skin_rewrite_skip_logged.exchange(true))
         {
             std::wstringstream stream;
-            stream << L"Generated temporary skin demo detected; live knife mutation is disabled, "
+            stream << L"Generated temporary skin demo detected; model+finish knife profiles remain reconstruction-only, explicit finish-only profiles remain live, "
                 << reconstructed_firearm_profiles
                 << L" reconstructed firearm profile(s) remain live for one native material initialization per entity generation, and "
                 << reconstructed_glove_profiles
@@ -84717,117 +84882,65 @@ void PollGameThreadStateModern()
             {
                 ++matched_profiles;
 
-                if (nskinzcs2::runtime::ResolveKnifeSlotMode(*knife_profile) == nskinzcs2::runtime::KnifeSlotMode::ModelAndFinish)
-                {
-                    // Pre-arm only a holstered authoritative world carrier.
-                    // The active source pair remains exclusively owned by the
-                    // native model transaction below.  With the target item
-                    // definition and finish attributes already present before
-                    // equip, Source 2 creates the first target deploy and HUD
-                    // slot natively instead of replacing them mid-animation.
-                    const auto prearm = TryPrearmHolsteredIndependentKnife(
-                        *knife_profile,
-                        player_binding,
-                        entity_list,
-                        entity_cache,
-                        entity_index,
-                        entity,
-                        weapon_item_view,
-                        current_definition_index,
-                        g_hook_state.schema_offsets);
-                    if (prearm == IndependentKnifePrearmResult::Applied ||
-                        prearm == IndependentKnifePrearmResult::Maintained ||
-                        prearm == IndependentKnifePrearmResult::ArmedActive)
-                    {
-                        ArmIndependentKnifePrearmHandoff(*knife_profile, entity_list);
-                        if (prearm != IndependentKnifePrearmResult::ArmedActive)
-                        {
-                            weapon_binding.world_definition_index = knife_profile->model_definition;
-                            applied_weapon_entities.insert(entity_index);
-                            ++applied_weapons;
-                        }
-                    }
+                if (!nskinzcs2::runtime::KnifeProfileUsesLiveFinish(*knife_profile))
                     continue;
-                }
-
                 knife_request = nskinzcs2::runtime::BuildKnifeFinishRequest(*knife_profile);
-                if (knife_request.mode == nskinzcs2::runtime::KnifeSlotMode::FinishOnly)
+
+                // A world-only signature cannot prove that a newly spawned HUD
+                // owns this finish. Resolve the bounded, owner-verified arms
+                // subtree and track both object generations before the fast path.
+                int cached_hud_index = -1;
+                void* cached_hud = nullptr;
+                const bool exact_hud = TryResolveStandardWeaponHudRender(
+                    entity_cache, player_binding, player_binding.active_weapon_handle,
+                    entity, g_hook_state.schema_offsets, cached_hud_index, cached_hud,
+                    entity_list, true);
+                if (exact_hud && TryTrackStandardWeaponAppearanceEpoch(
+                        entity_index, entity, entity, cached_hud, g_hook_state.schema_offsets))
                 {
-                    auto stable_finish_request = knife_request;
-                    stable_finish_request.model_definition = 0;
-                    const auto stable_finish_profile =
-                        BuildKnifeRuntimeWeaponProfile(
-                            *knife_profile,
-                            stable_finish_request,
-                            current_definition_index);
-                    const auto stable_finish_signature =
-                        BuildKnifeProfileApplySignature(
-                            stable_finish_request,
-                            xuid,
-                            current_definition_index,
-                            kTargetTagWeaponEntity);
-                    const auto refresh_signature_matches =
-                        HasAppliedSignature(
-                            g_hook_state.refreshed_weapon_signatures,
-                            entity_index,
-                            stable_finish_signature);
-                    int verified_definition_index = 0;
-                    const auto definition_state_matches =
-                        TryReadItemDefinitionIndex(
-                            weapon_item_view,
-                            g_hook_state.schema_offsets,
-                            verified_definition_index) &&
-                        verified_definition_index == current_definition_index;
-                    const auto attribute_state_matches =
-                        VerifyKnifeFinishRefreshAttributeValues(
-                            weapon_item_view,
-                            g_hook_state.schema_offsets,
-                            stable_finish_profile,
-                            nullptr);
-                    if (nskinzcs2::runtime::ShouldUseStableKnifeFinishFastPath(
-                            true,
-                            true,
-                            false,
-                            refresh_signature_matches,
-                            definition_state_matches,
-                            attribute_state_matches))
+                    const auto stable_profile = BuildKnifeRuntimeWeaponProfile(
+                        *knife_profile, knife_request, current_definition_index);
+                    const auto signature = BuildKnifeProfileApplySignature(
+                        knife_request, xuid, current_definition_index, kTargetTagWeaponEntity);
+                    int world_materials = -1, hud_materials = -1;
+                    const bool material_counts_match = g_hook_state.weapon_skin_refresh_ready.load() &&
+                        SafeReadField(entity, g_hook_state.weapon_skin_refresh.original_offset, world_materials) &&
+                        SafeReadField(cached_hud, g_hook_state.weapon_skin_refresh.original_offset, hud_materials) &&
+                        (stable_profile.paint_kit > 0
+                            ? world_materials > 0 && world_materials <= 128 && hud_materials > 0 && hud_materials <= 128
+                            : world_materials == 0 && hud_materials == 0);
+                    if (HasAppliedSignature(g_hook_state.applied_weapon_signatures, entity_index, signature) &&
+                        HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, entity_index, signature) &&
+                        HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, cached_hud_index, signature) &&
+                        g_hook_state.standard_weapon_appearance_epochs.at(entity_index).knife_hud_material_signature == signature &&
+                        material_counts_match && VerifyKnifeFinishRefreshAttributeValues(
+                            weapon_item_view, g_hook_state.schema_offsets, stable_profile, nullptr))
                     {
                         applied_weapon_entities.insert(entity_index);
                         prioritized_weapon_entities.insert(entity_index);
-                        std::wstringstream stream;
-                        stream << L"Knife finish-only pre-context fast path active for XUID " << xuid
-                            << L": entity=" << entity_index
-                            << L", definition=" << current_definition_index
-                            << L", paint=" << stable_finish_profile.paint_kit
-                            << L", model/animation discovery and material refresh skipped.";
-                        LogProfileDiagnosticOnce(
-                            stable_finish_signature ^ 0x505245535441424Cull,
-                            stream.str());
                         continue;
                     }
                 }
-                knife_context =
-                    ResolveKnifeRuntimeContext(
-                        entity_list,
-                        entity_cache,
-                        player_binding,
-                        entity_index,
-                        entity,
-                        weapon_item_view,
-                        g_hook_state.schema_offsets,
-                        xuid,
-                        watched_xuid,
-                        current_definition_index,
-                        known_definition_indices,
-                        knife_definition_indices,
-                         glove_definition_indices,
-                         demo_playing,
-                         g_hook_state.schema_ready.load(),
-                         g_hook_state.entity_system_ready.load(),
-                         &observer_resolution,
-                         &bridge_resolution);
-                // Cosmetics receive a finish-only request. The independent model
-                // controller has its own request, identity, snapshot and verification.
+
+                // Finish-only needs the verified owned world carrier; it never
+                // performs model, animation, providee or resource-swap discovery.
+                knife_context = {};
+                knife_context.watched_xuid = watched_xuid;
+                knife_context.watched_target = xuid == watched_xuid;
+                knife_context.live_definition_index = current_definition_index;
+                knife_context.world_definition_index = current_definition_index;
+                knife_context.world_entity_index = entity_index;
+                knife_context.demo_playing = demo_playing;
+                knife_context.schema_ready = g_hook_state.schema_ready.load();
+                knife_context.entity_system_ready = g_hook_state.entity_system_ready.load();
+                knife_context.active_weapon_is_knife =
+                    player_binding.active_weapon_entity_index == entity_index &&
+                    nskinzcs2::runtime::FindKnifeModelAsset(current_definition_index) != nullptr;
+                knife_context.world_carrier_valid = entity != nullptr;
+                knife_context.world_item_view_valid = weapon_item_view != nullptr;
+                knife_context.viewmodel_entity_index = exact_hud ? cached_hud_index : -1;
+                // Only the live finish mode reaches this gate. Model+finish is
+                // reconstructed in a separate Demo and never falls back here.
                 knife_gate = nskinzcs2::runtime::EvaluateKnifeApplyGate({knife_request, knife_context});
                 weapon_binding.viewmodel_entity_index = knife_context.viewmodel_entity_index;
                 weapon_binding.providee_entity_index = knife_context.providee_entity_index;
@@ -84912,53 +85025,6 @@ void PollGameThreadStateModern()
                     continue;
                 }
             }
-            // Once the material helper has completed, finish-only knife state
-            // is durable while both its econ fields and dynamic attributes
-            // still match. The exact path scans render/HUD carriers before it
-            // can discover that no further work is needed, which made an
-            // active first-person knife repeatedly consume a full CPU core.
-            // Preserve the live model and take a verified no-write fast path.
-            if (is_runtime_knife_profile &&
-                prefer_standard_weapon_appearance_pipeline &&
-                !allow_knife_model_rebind &&
-                HasAppliedSignature(
-                    g_hook_state.refreshed_weapon_signatures,
-                    entity_index,
-                    weapon_signature))
-            {
-                int verified_definition_index = 0;
-                const auto definition_state_matches =
-                    TryReadItemDefinitionIndex(
-                        weapon_item_view,
-                        g_hook_state.schema_offsets,
-                        verified_definition_index) &&
-                    verified_definition_index == current_definition_index;
-                const auto attribute_state_matches =
-                    VerifyKnifeFinishRefreshAttributeValues(
-                        weapon_item_view,
-                        g_hook_state.schema_offsets,
-                        effective_profile,
-                        keychain_profile);
-                if (nskinzcs2::runtime::ShouldUseStableKnifeFinishFastPath(
-                        true,
-                        true,
-                        allow_knife_model_rebind,
-                        true,
-                        definition_state_matches,
-                        attribute_state_matches))
-                {
-                    applied_weapon_entities.insert(entity_index);
-                    std::wstringstream stream;
-                    stream << L"Knife finish-only stable fast path active for XUID " << xuid
-                        << L": entity=" << entity_index
-                        << L", definition=" << current_definition_index
-                        << L", paint=" << effective_profile.paint_kit
-                        << L", exact carrier scan and material refresh skipped.";
-                    LogProfileDiagnosticOnce(weapon_signature ^ 0x535441424C45ull, stream.str());
-                    continue;
-                }
-            }
-
             bool direct_applied = false;
             bool linked_applied = false;
             bool hud_viewmodel_applied = false;
@@ -89812,14 +89878,23 @@ bool nskinzcs2::runtime::ProbeStandardWeaponStockFinishForTests()
     ReleaseStandardWeaponAttributeWrites(AttributeBindingReleaseMode::RestoreOriginal);
     // Exercise the same independent knife synchronization used after model
     // handoff, with empty CT/T source attributes and subsequent paint changes.
-    for (const auto source : std::array<std::uint16_t, 2> {42, 59})
+    for (const auto source : std::array<std::uint16_t, 3> {42, 59, 507})
     {
         if (!initialize()) return false;
         SafeWriteField(item, 0x10, source);
         model::CosmeticProfile knife;
         knife.base_item = 42; knife.paint_kit = 568; knife.seed = 321; knife.wear = 0.17f;
+        if (VerifyKnifeFinishRefreshAttributeValues(item, offsets, knife, nullptr)) return false;
         if (!SynchronizeIndependentKnifeFinishAttributes(entity.data(), item, offsets, knife) ||
             g_stock_probe_appends != 1 || g_stock_probe_nodes.size() != 3) return false;
+        // Reproduce the late HUD condition from the v0.6.5 log: the manual
+        // epoch is closed, but verified engine-owned slots permit exactly one
+        // initialization for the new material signature.
+        const bool finish_verified = VerifyKnifeFinishRefreshAttributeValues(item, offsets, knife, nullptr);
+        if (!finish_verified ||
+            ShouldAllowWeaponRefreshHelperDispatch(true, KnifeRefreshHelperPolicy::ManualOnly, false) ||
+            !ShouldAllowVerifiedInPlaceKnifeInitializationRefresh(true, true, finish_verified, false) ||
+            ShouldAllowVerifiedInPlaceKnifeInitializationRefresh(true, true, finish_verified, true)) return false;
         for (int i = 0; i < 1000; ++i)
             if (!SynchronizeIndependentKnifeFinishAttributes(entity.data(), item, offsets, knife)) return false;
         if (g_stock_probe_appends != 1 || g_stock_probe_mutations != 3) return false;

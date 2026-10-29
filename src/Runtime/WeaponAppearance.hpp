@@ -80,6 +80,10 @@ bool IsStandardWeaponHudRenderCandidate(
     std::wstring_view class_name, std::string_view model_name,
     std::uint32_t candidate_owner, std::uint32_t weapon_handle,
     bool below_verified_arms, bool aliases_world_or_arms) noexcept;
+bool IsKnifeHudRenderCandidate(
+    std::wstring_view class_name, std::string_view model_name,
+    std::uint32_t candidate_owner, std::uint32_t weapon_handle,
+    bool below_verified_arms, bool aliases_world_or_arms) noexcept;
 std::uint64_t ResolvePaintMeshGroupMask(
     bool standard_weapon, int paint_kit, const model::Catalog* catalog) noexcept;
 

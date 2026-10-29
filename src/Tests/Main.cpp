@@ -43,6 +43,7 @@ bool g_mesh_benchmark_only = false;
 bool g_knife_model_only = false;
 bool g_weapon_paint_only = false;
 bool g_cosmetic_rewrite_only = false;
+bool g_workshop_discovery_only = false;
 bool g_glove_refresh_only = false;
 
 void WriteRadarPreviewIfRequested(
@@ -1265,6 +1266,51 @@ void TestConfigRoundTrip()
             migrated.map_remap.radar_overlay_file_path.empty(),
         "v6 radar overlay cache should be invalidated during migration");
     fs::remove(temp_path);
+}
+
+void TestWorkshopMapDiscoveryFailureIsolation()
+{
+    namespace fs = std::filesystem;
+    const auto root = fs::temp_directory_path() /
+        (L"nskinz-workshop-ui-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+    const auto workshop = root / L"steamapps/workshop";
+    const auto item = workshop / L"content/730/123456789";
+    fs::create_directories(item);
+    std::ofstream(workshop / L"appworkshop_730.acf") << "\"WorkshopItemsInstalled\" { \"123456789\" {} \"987654321\" {} }";
+    std::ofstream(item / L"publish_data.txt") << "\"title\" \"UI startup fixture\"";
+    std::ofstream(item / L"broken_dir.vpk") << "incomplete package";
+    std::ofstream(workshop / L"content/730/987654321") << "not a directory";
+    const auto vpk = item / L"\u5730\u56fe\U0001F5FA_dir.vpk";
+    const char prefix[] = "vpk\0maps\0de_nskinz_ui_fixture";
+    std::string tree(prefix, sizeof(prefix));
+    const auto append = [&tree](const auto value)
+    { tree.append(reinterpret_cast<const char*>(&value), sizeof(value)); };
+    append(std::uint32_t {0}); append(std::uint16_t {0}); append(std::uint16_t {0x7FFF});
+    append(std::uint32_t {0}); append(std::uint32_t {0}); append(std::uint16_t {0xFFFF});
+    tree.append(3, '\0');
+    {
+        std::ofstream stream(vpk, std::ios::binary);
+        const std::array<std::uint32_t, 3> header {0x55AA1234u, 1u, static_cast<std::uint32_t>(tree.size())};
+        stream.write(reinterpret_cast<const char*>(header.data()), sizeof(header));
+        stream.write(tree.data(), static_cast<std::streamsize>(tree.size()));
+    }
+    const fs::path invalid_root(L"?:\\nskinz-invalid-library");
+    const auto too_long_root = root / std::wstring(300, L'x');
+    bool old_throwing_probe_failed = false;
+    try { (void)fs::is_regular_file(too_long_root / L"steamapps/workshop/appworkshop_730.acf"); }
+    catch (const fs::filesystem_error&) { old_throwing_probe_failed = true; }
+    const auto result = nskinzcs2::runtime::DiscoverWorkshopMapsInLibraries(
+        {invalid_root, too_long_root, root / L"missing-library", root});
+    Expect(result.entries.size() == 1, "bad roots, non-directory items and truncated packages must not discard a healthy library");
+    Expect(!result.diagnostics.empty(), "invalid library errors must remain visible as diagnostics");
+    Expect(result.entries[0].map_name == "de_nskinz_ui_fixture", "the healthy map must remain selectable");
+    auto expected_name = vpk.stem().u8string();
+    expected_name.resize(expected_name.size() - 4);
+    Expect(result.entries[0].addon_name == std::string(reinterpret_cast<const char*>(expected_name.data()), expected_name.size()),
+        "Unicode/emoji addon filenames must use UTF-8 and cannot be poisoned by a broken package");
+    fs::remove_all(root);
+    std::cout << "workshop_ui_error_isolation=PASS; old_throwing_path=" << old_throwing_probe_failed
+        << "; healthy_entries=" << result.entries.size() << '\n';
 }
 
 void TestWorkshopMapDiscovery()
@@ -6520,6 +6566,18 @@ void TestM4A4ModernLegacyTransition()
     Expect(!accepts(L"C_CS2HudModelWeapon", m4, handle + 0x8000), "same slot with a different serial is rejected");
     Expect(!accepts(L"C_CS2HudModelWeapon", m4, handle, false), "disconnected gun node is rejected");
     Expect(!accepts(L"C_CS2HudModelWeapon", m4, handle, true, true), "world/arms aliases are rejected");
+    constexpr std::string_view karambit = "weapons/models/knife/knife_karambit/weapon_knife_karambit.vmdl";
+    const auto accepts_knife = [&](std::wstring_view type, std::string_view model, std::uint32_t owner,
+        bool under_arms = true, bool alias = false)
+    { return IsKnifeHudRenderCandidate(type, model, owner, handle, under_arms, alias); };
+    Expect(accepts_knife(L"C_CS2HudModelWeapon", karambit, handle),
+        "knife HUD is a render-only consumer without an Econ item view");
+    Expect(!accepts_knife(L"C_CS2HudModelArms", karambit, handle) &&
+        !accepts_knife(L"C_CS2HudModelWeapon", m4, handle), "knife material copy excludes arms and guns");
+    Expect(!accepts_knife(L"C_CS2HudModelWeapon", karambit, handle + 0x8000) &&
+        !accepts_knife(L"C_CS2HudModelWeapon", karambit, handle, false) &&
+        !accepts_knife(L"C_CS2HudModelWeapon", karambit, handle, true, true),
+        "knife HUD requires the exact active owner and verified arms subtree without world/arms aliases");
     for (const auto model : {"characters/models/ct.vmdl", "weapons/models/shared/arms/ct.vmdl",
         "weapons/models/knife/knife_m9/weapon_knife_m9.vmdl", "weapons/models/glove.vmdl", ""})
     {
@@ -6645,6 +6703,12 @@ int RunAllTests()
             std::cout << "cosmetic rewrite regression passed (no CS2 process)\n";
             return EXIT_SUCCESS;
         }
+        if (g_workshop_discovery_only)
+        {
+            RunNamedTest("TestWorkshopMapDiscoveryFailureIsolation", TestWorkshopMapDiscoveryFailureIsolation);
+            std::cout << "workshop discovery failure regression passed (no CS2 process)\n";
+            return EXIT_SUCCESS;
+        }
         if (g_mesh_benchmark_only)
         {
             const auto result = nskinzcs2::runtime::ProbeWeaponMeshMaskForTests();
@@ -6671,6 +6735,7 @@ int RunAllTests()
         RunNamedTest("TestConfigRoundTrip", TestConfigRoundTrip);
         RunNamedTest("TestStickerPreviewNativePlacement", TestStickerPreviewNativePlacement);
         RunNamedTest("TestWorkshopMapDiscovery", TestWorkshopMapDiscovery);
+    RunNamedTest("TestWorkshopMapDiscoveryFailureIsolation", TestWorkshopMapDiscoveryFailureIsolation);
         RunNamedTest("TestCosmeticWearPolicy", TestCosmeticWearPolicy);
         RunNamedTest("TestProfileMatching", TestProfileMatching);
         RunNamedTest("TestKeychainConfigAndMatching", TestKeychainConfigAndMatching);
@@ -6753,6 +6818,10 @@ void ParseArguments(const int argc, wchar_t** argv)
         else if (argument == L"--cosmetic-rewrite-only")
         {
             g_cosmetic_rewrite_only = true;
+        }
+        else if (argument == L"--workshop-discovery-only")
+        {
+            g_workshop_discovery_only = true;
         }
         else if (argument == L"--glove-refresh-only")
         {

@@ -101,6 +101,24 @@ void AssetsAndRequestIsolation()
     Check(finish.model_definition == 0 && finish.mode == KnifeSlotMode::FinishOnly, "production finish chain owns no model");
     profile.mode = nskinzcs2::model::KnifeProfileMode::FinishOnly;
     Check(!BuildKnifeModelRequest(profile).Enabled(), "hidden retained target ignored in finish-only mode");
+    auto model_profile = profile;
+    model_profile.mode = nskinzcs2::model::KnifeProfileMode::ModelAndFinish;
+    auto missing_model = model_profile;
+    missing_model.model_definition = 0;
+    auto disabled = profile;
+    disabled.enabled = false;
+    auto no_owner = profile;
+    no_owner.xuid = 0;
+    std::vector<nskinzcs2::model::KnifeProfile> live_profiles {
+        profile, model_profile, missing_model, disabled, no_owner};
+    RestrictKnifeProfilesToLiveFinish(live_profiles);
+    Check(live_profiles[0].enabled && live_profiles[0].model_definition == profile.model_definition,
+        "finish-only must remain live on original and generated demos without selecting a hidden model");
+    for (std::size_t i = 1; i < live_profiles.size(); ++i)
+        Check(!live_profiles[i].enabled && !BuildKnifeModelRequest(live_profiles[i]).Enabled(),
+            "reconstruction-only, invalid and disabled profiles must never arm a live model/fallback transaction");
+    Check(model_profile.enabled && model_profile.model_definition == 526,
+        "live filtering must not mutate the source configuration used for Temporary Demo generation");
     profile.enabled = false;
     Check(BuildKnifeFinishRequest(profile).mode == KnifeSlotMode::None, "disabled profile stays disabled");
 }

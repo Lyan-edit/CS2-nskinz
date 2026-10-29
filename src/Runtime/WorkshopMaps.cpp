@@ -143,7 +143,8 @@ std::string ReadTextFile(const std::filesystem::path& path)
     return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
 }
 
-std::vector<std::filesystem::path> FindSteamLibraries(const DWORD process_id)
+std::vector<std::filesystem::path> FindSteamLibraries(
+    const DWORD process_id, std::vector<std::wstring>* diagnostics = nullptr)
 {
     std::vector<std::filesystem::path> roots;
     if (const auto derived = SteamLibraryFromCs2Path(ProcessImagePath(process_id)); derived.has_value())
@@ -176,7 +177,16 @@ std::vector<std::filesystem::path> FindSteamLibraries(const DWORD process_id)
                 }
                 unescaped.push_back(path[index]);
             }
-            roots.emplace_back(std::filesystem::path(unescaped));
+            try
+            {
+                const auto* utf8 = reinterpret_cast<const char8_t*>(unescaped.data());
+                roots.emplace_back(std::filesystem::path(std::u8string_view(utf8, unescaped.size())));
+            }
+            catch (const std::exception&)
+            {
+                if (diagnostics != nullptr)
+                    diagnostics->push_back(L"Skipped a malformed UTF-8 Steam library path in libraryfolders.vdf.");
+            }
         }
     }
 
@@ -611,9 +621,27 @@ nskinzcs2::runtime::WorkshopMapScanResult nskinzcs2::runtime::DiscoverSubscribed
     const DWORD cs2_process_id)
 {
     WorkshopMapScanResult result;
+    try
+    {
+        std::vector<std::wstring> diagnostics;
+        const auto libraries = FindSteamLibraries(cs2_process_id, &diagnostics);
+        result = DiscoverWorkshopMapsInLibraries(libraries);
+        result.diagnostics.insert(result.diagnostics.begin(), diagnostics.begin(), diagnostics.end());
+    }
+    catch (const std::exception& exception)
+    {
+        const std::string detail(exception.what());
+        result.diagnostics.push_back(L"Steam library discovery failed: " + std::wstring(detail.begin(), detail.end()));
+    }
+    return result;
+}
+
+nskinzcs2::runtime::WorkshopMapScanResult nskinzcs2::runtime::DiscoverWorkshopMapsInLibraries(
+    const std::vector<std::filesystem::path>& libraries)
+{
+    WorkshopMapScanResult result;
     std::size_t skipped_auxiliary_maps = 0;
     std::size_t standalone_vpk_packages = 0;
-    const auto libraries = FindSteamLibraries(cs2_process_id);
     if (libraries.empty())
     {
         result.diagnostics.push_back(L"Steam library roots could not be resolved.");
@@ -622,97 +650,118 @@ nskinzcs2::runtime::WorkshopMapScanResult nskinzcs2::runtime::DiscoverSubscribed
 
     for (const auto& library : libraries)
     {
-        const auto workshop_root = library / L"steamapps" / L"workshop";
-        const auto manifest = workshop_root / L"appworkshop_730.acf";
-        const auto content_root = workshop_root / L"content" / L"730";
-        if (!std::filesystem::is_regular_file(manifest) || !std::filesystem::is_directory(content_root))
+        try
         {
-            continue;
-        }
-
-        const auto installed_ids = ParseInstalledWorkshopIds(manifest);
-        for (const auto& id : installed_ids)
-        {
-            const auto item_directory = content_root / std::filesystem::path(id);
-            if (!std::filesystem::is_directory(item_directory))
+            const auto workshop_root = library / L"steamapps" / L"workshop";
+            const auto manifest = workshop_root / L"appworkshop_730.acf";
+            const auto content_root = workshop_root / L"content" / L"730";
+            std::error_code path_error;
+            const bool manifest_exists = std::filesystem::is_regular_file(manifest, path_error);
+            if (path_error && path_error != std::errc::no_such_file_or_directory && path_error != std::errc::not_a_directory)
+                result.diagnostics.push_back(L"Cannot inspect Workshop manifest: " + manifest.wstring() + L" (error " + std::to_wstring(path_error.value()) + L").");
+            if (!manifest_exists || !std::filesystem::is_directory(content_root, path_error))
             {
                 continue;
             }
 
-            const auto publish_text = ReadTextFile(item_directory / L"publish_data.txt");
-            auto title = ParsePublishValue(publish_text, "title");
-            auto addon_name = SourceFolderName(ParsePublishValue(publish_text, "source_folder"));
-            if (title.empty())
+            const auto installed_ids = ParseInstalledWorkshopIds(manifest);
+            for (const auto& id : installed_ids)
             {
-                title = "Workshop " + id;
-            }
+                const auto item_directory = content_root / std::filesystem::path(id);
+                if (!std::filesystem::is_directory(item_directory, path_error))
+                {
+                    continue;
+                }
 
-            std::vector<std::string> maps;
-            std::map<std::string, std::string> skybox_by_map;
-            for (const auto& file : std::filesystem::directory_iterator(item_directory))
-            {
-                if (!file.is_regular_file())
+                const auto publish_text = ReadTextFile(item_directory / L"publish_data.txt");
+                auto title = ParsePublishValue(publish_text, "title");
+                auto addon_name = SourceFolderName(ParsePublishValue(publish_text, "source_folder"));
+                if (title.empty())
                 {
-                    continue;
+                    title = "Workshop " + id;
                 }
-                auto filename = file.path().filename().wstring();
-                std::transform(filename.begin(), filename.end(), filename.begin(), [](const wchar_t character)
+
+                std::vector<std::string> maps;
+                std::map<std::string, std::string> skybox_by_map;
+                std::error_code iterator_error;
+                for (std::filesystem::directory_iterator iterator(item_directory,
+                         std::filesystem::directory_options::skip_permission_denied, iterator_error), end;
+                     iterator != end && !iterator_error; iterator.increment(iterator_error))
                 {
-                    return static_cast<wchar_t>(std::towlower(character));
-                });
-                if (!IsWorkshopVpkIndexFile(filename))
-                {
-                    continue;
-                }
-                if (!filename.ends_with(L"_dir.vpk"))
-                {
-                    ++standalone_vpk_packages;
-                }
-                auto vpk_maps = EnumerateMapsFromVpk(file.path());
-                const auto entries = EnumerateVpkEntries(file.path());
-                for (const auto& map_name : vpk_maps)
-                {
-                    const auto skybox_prefix =
-                        SelectWorkshopSkyboxResourcePrefix(entries, map_name);
-                    if (!skybox_prefix.empty())
+                    const auto& file = *iterator;
+                    std::error_code file_error;
+                    if (!file.is_regular_file(file_error))
                     {
-                        skybox_by_map[map_name] = skybox_prefix;
+                        continue;
+                    }
+                    auto filename = file.path().filename().wstring();
+                    std::transform(filename.begin(), filename.end(), filename.begin(), [](const wchar_t character)
+                    {
+                        return static_cast<wchar_t>(std::towlower(character));
+                    });
+                    if (!IsWorkshopVpkIndexFile(filename))
+                    {
+                        continue;
+                    }
+                    if (!filename.ends_with(L"_dir.vpk"))
+                    {
+                        ++standalone_vpk_packages;
+                    }
+                    auto vpk_maps = EnumerateMapsFromVpk(file.path());
+                    const auto entries = EnumerateVpkEntries(file.path());
+                    for (const auto& map_name : vpk_maps)
+                    {
+                        const auto skybox_prefix =
+                            SelectWorkshopSkyboxResourcePrefix(entries, map_name);
+                        if (!skybox_prefix.empty())
+                        {
+                            skybox_by_map[map_name] = skybox_prefix;
+                        }
+                    }
+                    maps.insert(maps.end(), vpk_maps.begin(), vpk_maps.end());
+                    if (addon_name.empty() && !vpk_maps.empty())
+                    {
+                        const auto utf8_name = file.path().stem().u8string();
+                        addon_name.assign(reinterpret_cast<const char*>(utf8_name.data()), utf8_name.size());
+                        if (addon_name.ends_with("_dir"))
+                        {
+                            addon_name.resize(addon_name.size() - 4);
+                        }
                     }
                 }
-                maps.insert(maps.end(), vpk_maps.begin(), vpk_maps.end());
+
+                if (iterator_error)
+                    result.diagnostics.push_back(L"Cannot enumerate Workshop item: " + item_directory.wstring() + L" (error " + std::to_wstring(iterator_error.value()) + L").");
+                std::sort(maps.begin(), maps.end());
+                maps.erase(std::unique(maps.begin(), maps.end()), maps.end());
                 if (addon_name.empty())
                 {
-                    addon_name = file.path().stem().string();
-                    if (addon_name.ends_with("_dir"))
-                    {
-                        addon_name.resize(addon_name.size() - 4);
-                    }
-                }
-            }
-
-            std::sort(maps.begin(), maps.end());
-            maps.erase(std::unique(maps.begin(), maps.end()), maps.end());
-            if (addon_name.empty())
-            {
-                continue;
-            }
-            for (const auto& map_name : maps)
-            {
-                if (IsLikelyAuxiliaryWorkshopMap(map_name))
-                {
-                    ++skipped_auxiliary_maps;
                     continue;
                 }
-                const auto skybox = skybox_by_map.find(map_name);
-                result.entries.push_back({
-                    id,
-                    title,
-                    addon_name,
-                    map_name,
-                    item_directory,
-                    skybox != skybox_by_map.end() ? skybox->second : std::string {},
-                });
+                for (const auto& map_name : maps)
+                {
+                    if (IsLikelyAuxiliaryWorkshopMap(map_name))
+                    {
+                        ++skipped_auxiliary_maps;
+                        continue;
+                    }
+                    const auto skybox = skybox_by_map.find(map_name);
+                    result.entries.push_back({
+                        id,
+                        title,
+                        addon_name,
+                        map_name,
+                        item_directory,
+                        skybox != skybox_by_map.end() ? skybox->second : std::string {},
+                    });
+                }
             }
+        }
+        catch (const std::exception& exception)
+        {
+            const std::string detail(exception.what());
+            result.diagnostics.push_back(L"Skipped Workshop library: " + library.wstring() + L". " +
+                std::wstring(detail.begin(), detail.end()));
         }
     }
 

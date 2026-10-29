@@ -1,6 +1,7 @@
 #include "Runtime/WeaponAppearance.hpp"
 
 #include "Core/StickerPlacement.hpp"
+#include "Runtime/KnifeModel.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -122,6 +123,17 @@ bool nskinzcs2::runtime::IsStandardWeaponHudRenderCandidate(
         model_name.find("knife_") == std::string_view::npos &&
         model_name.find("/arms/") == std::string_view::npos &&
         model_name.find("glove") == std::string_view::npos;
+}
+
+bool nskinzcs2::runtime::IsKnifeHudRenderCandidate(
+    const std::wstring_view class_name, const std::string_view model_name,
+    const std::uint32_t candidate_owner, const std::uint32_t weapon_handle,
+    const bool below_verified_arms, const bool aliases_world_or_arms) noexcept
+{
+    return below_verified_arms && !aliases_world_or_arms &&
+        weapon_handle != 0xFFFFFFFFu && weapon_handle != 0xFFFFFFFEu &&
+        candidate_owner == weapon_handle && class_name == L"C_CS2HudModelWeapon" &&
+        FindKnifeModelAssetByPath(model_name) != nullptr;
 }
 
 std::uint64_t nskinzcs2::runtime::ResolvePaintMeshGroupMask(

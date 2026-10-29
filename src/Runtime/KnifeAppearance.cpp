@@ -76,6 +76,18 @@ int ResolveKnifeRuntimeModelDefinition(const nskinzcs2::model::KnifeProfile& pro
 
 namespace nskinzcs2::runtime
 {
+bool KnifeProfileUsesLiveFinish(const nskinzcs2::model::KnifeProfile& profile) noexcept
+{
+    return profile.enabled && profile.xuid != 0 &&
+        profile.mode == nskinzcs2::model::KnifeProfileMode::FinishOnly;
+}
+
+void RestrictKnifeProfilesToLiveFinish(std::vector<nskinzcs2::model::KnifeProfile>& profiles) noexcept
+{
+    for (auto& profile : profiles)
+        profile.enabled = KnifeProfileUsesLiveFinish(profile);
+}
+
 KnifeSlotMode ResolveKnifeSlotMode(const nskinzcs2::model::KnifeProfile& profile) noexcept
 {
     if (!profile.enabled || profile.xuid == 0)

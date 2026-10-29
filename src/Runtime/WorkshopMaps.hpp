@@ -53,6 +53,10 @@ bool IsWorkshopVpkIndexFile(std::wstring_view filename);
 // Reads Steam's local appworkshop_730.acf plus each installed item's VPK tree.
 // No Steam Web API or workshop file mutation is involved.
 WorkshopMapScanResult DiscoverSubscribedWorkshopMaps(DWORD cs2_process_id = 0);
+// Shared discovery path for explicit library roots. An inaccessible/malformed
+// library is diagnosed and skipped without discarding healthy libraries.
+WorkshopMapScanResult DiscoverWorkshopMapsInLibraries(
+    const std::vector<std::filesystem::path>& libraries);
 
 // Reads the selected map's compiled radar texture directly from its installed
 // Workshop VPK. The Workshop item and game installation remain untouched.

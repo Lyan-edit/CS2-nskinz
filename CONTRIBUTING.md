@@ -14,6 +14,8 @@ Before opening an issue or pull request:
 
 Pull requests should explain the runtime effect, avoid unrelated formatting churn, and update the README when user-facing behavior changes. Cosmetic testing must remain offline and use `-insecure`.
 
+Before every release, refresh the cover version and real panel capture using the [release artwork workflow](docs/development/release-artwork.md), then run `python tools/update_release_artwork.py --check`.
+
 ## 简体中文
 
 感谢参与 nSkinzCS2。项目面向通过 HLAE 进行的 Counter-Strike 2 离线 Demo 回放，所有贡献都必须保持这个使用边界。
@@ -27,3 +29,5 @@ Pull requests should explain the runtime effect, avoid unrelated formatting chur
 - 写明变更摘要、测试命令、兼容基线和已知限制。
 
 Pull Request 应说明运行时影响，避免无关格式化，并在用户可见行为变化时同步更新 README。所有皮肤测试必须保持离线并使用 `-insecure`。
+
+每次发版按[图片同步流程](docs/development/release-artwork.md)更新封面版本与当前真实面板截图，并执行 `python tools/update_release_artwork.py --check`。

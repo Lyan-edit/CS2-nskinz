@@ -15,7 +15,7 @@ public:
     explicit MainWindow(AppState& state, DWORD external_runtime_process_id = 0);
     ~MainWindow();
 
-    void Start();
+    void Start(bool open_on_start = false);
     void Stop();
 
 private:
@@ -26,5 +26,6 @@ private:
     DWORD external_runtime_process_id_ = 0;
     std::thread thread_;
     std::atomic_bool stop_requested_ {false};
+    bool open_on_start_ = false;
 };
 }
