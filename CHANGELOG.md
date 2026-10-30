@@ -1,5 +1,16 @@
 # Changelog / 更新记录
 
+## v0.6.6 — 2026-10-30
+
+- Restored 22 missing glove finishes, including Occult (1417), using exact item/paint associations and VPK icons; removed numeric-ID classification. Added the missing supported Kukri menu entry and 12 finishes, plus inherited model metadata for 61 souvenir keychains.
+- 补齐隐知等 22 个手套涂装，改用真实型号／涂装关系和 VPK 图标，消除 ID 区间分类；补上廓尔喀刀及 12 个涂装，补全 61 个纪念品挂件继承模型信息。
+- Independent bilingual audits cover 34 firearms / 1,471 pairs, 20 market knives / 556 pairs, 94 glove finishes, 11,642 sticker options (including zero) and 143 nonzero keychains. Existing supported catalogs have no remaining omissions; Zeus remains outside the firearm module.
+- 双语独立核对覆盖 34 把枪／1,471 组合、20 刀型／556 组合、94 手套涂装、11,642 贴纸选项（含零）和 143 挂件，现有支持范围内无其余漏项。
+- Retains beta knife-mode routing and UI recovery. Default T/CT gloves and keychains remain Temporary-Demo-only. Catalog 2000938 evidence does not certify newer-client native offsets; the existing native baseline remains 2000935.
+- 保留 beta 刀具模式分流和面板异常恢复，默认手套与挂件仍只走临时 Demo。目录核对不等于新客户端原生地址认证。
+
+See [bilingual release notes](docs/releases/v0.6.6.md) and [coverage evidence](docs/diagnostics/catalog-coverage-20261030.md).
+
 ## v0.6.6-beta — 2026-10-29
 
 - Fixed knife routing: Model + Finish uses Temporary Demo only; Finish-only hot-updates the current texture in source/generated demos. Modern HUD materials use the verified world carrier, cached by generation and appearance.

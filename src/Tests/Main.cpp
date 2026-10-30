@@ -6,8 +6,10 @@
 #include "Cs2/Runtime.hpp"
 #include "Runtime/GloveAppearance.hpp"
 #include "Runtime/GloveVisualRefresh.hpp"
+#include "Runtime/DemoSkinRewrite.hpp"
 #include "Runtime/KnifeAnimation.hpp"
 #include "Runtime/KnifeAppearance.hpp"
+#include "Runtime/KnifeModel.hpp"
 #include "Runtime/KnifeUpdateProbe.hpp"
 #include "Runtime/MapRemap.hpp"
 #include "Runtime/RadarAlphaFix.hpp"
@@ -2356,6 +2358,17 @@ void TestKnifeProfileConfigMigration()
 
 void TestCatalogFallback()
 {
+    const auto fallback = nskinzcs2::CatalogBuilder::BuildFallbackCatalog();
+    for (const auto& asset : nskinzcs2::runtime::KnifeModelAssets())
+    {
+        if (asset.definition < 500) continue;
+        Expect(std::any_of(fallback.knife_items.begin(), fallback.knife_items.end(),
+            [&](const auto& item) { return item.id == asset.definition; }),
+            "every supported market knife model must be present in the UI catalog, including Kukri");
+        Expect(fallback.visuals.at(asset.definition).is_knife,
+            "every selectable supported knife needs visual metadata");
+    }
+
     const auto catalog = nskinzcs2::CatalogBuilder::BuildFallbackCatalog();
     Expect(!catalog.base_items.empty(), "fallback catalog should contain base items");
     Expect(!catalog.weapon_paint_kits.empty(), "fallback catalog should contain paint kits");
@@ -2839,6 +2852,235 @@ void TestWeaponPaintCompatibility()
         "actual runtime entrypoints must reject incompatible paints before writes, binding or cached success");
 }
 
+void TestModernGloveCatalog()
+{
+    constexpr std::string_view items = R"kv("items_game"
+{
+    "qualities"
+    {
+        "normal"
+        {
+            "value" "0"
+        }
+    }
+    "items"
+    {
+        "7"
+        {
+            "name" "weapon_ak47"
+        }
+        "5030"
+        {
+            "name" "sporty_gloves"
+            "prefab" "hands_paintable"
+        }
+        "5031"
+        {
+            "name" "slick_gloves"
+            "prefab" "hands_paintable"
+        }
+        "5034"
+        {
+            "name" "specialist_gloves"
+            "prefab" "hands_paintable"
+        }
+    }
+    "paint_kits"
+    {
+        "0"
+        {
+            "name" "default"
+        }
+        "44"
+        {
+            "name" "weapon_only"
+            "description_tag" "#SameDisplayName"
+        }
+        "1417"
+        {
+            "name" "glove_sport_velvet_red"
+            "description_tag" "#SameDisplayName"
+            "composite_material_path" "gloves/paints/volatile_02/glove_sport_velvet_red.vcompmat"
+        }
+        "1398"
+        {
+            "name" "new_driver_without_prefix_or_material_hint"
+        }
+        "1413"
+        {
+            "name" "new_specialist_icon_only"
+        }
+        "10018"
+        {
+            "name" "sporty_legacy_without_exact_pair"
+        }
+        "10019"
+        {
+            "name" "sporty_misleading_prefix"
+        }
+        "10020"
+        {
+            "name" "sporty_conflicting_sources"
+        }
+        "10123"
+        {
+            "name" "specialist_future_firearm"
+        }
+    }
+    "item_sets"
+    {
+        "set"
+        {
+            "[weapon_only]weapon_ak47" "1"
+            "[specialist_future_firearm]weapon_ak47" "1"
+            "[glove_sport_velvet_red]sporty_gloves" "1"
+            "[sporty_misleading_prefix]slick_gloves" "1"
+            "[sporty_conflicting_sources]sporty_gloves" "1"
+        }
+    }
+    "client_loot_lists"
+    {
+        "list"
+        {
+            "[new_driver_without_prefix_or_material_hint]slick_gloves" "1"
+        }
+    }
+}
+
+)kv";
+    constexpr std::string_view localization = R"kv("lang"
+{
+    "Tokens"
+    {
+        "SameDisplayName" "隐知"
+    }
+}
+)kv";
+    const auto catalog = nskinzcs2::CatalogBuilder::BuildCatalogFromGameText(items, localization,
+        "specialist_gloves_new_specialist_icon_only_light_png.vtex_c\n"
+        "specialist_gloves_new_specialist_icon_only_medium_png.vtex_c\n"
+        "slick_gloves_sporty_conflicting_sources_heavy_png.vtex_c\n"
+        "sporty_gloves_glove_sport_velvet_red_light_png.vtex_c\n");
+    Expect(catalog.has_value(), "modern glove catalog fixture must parse");
+    for (const auto [paint, definition] : {std::pair {1417, 5030}, {1398, 5031}, {1413, 5034},
+                                         {10018, 5030}, {10019, 5031}})
+    {
+        Expect(catalog->glove_paint_compatibility.at(paint) == definition,
+            "gloves use exact collection/loot/icon evidence, with legacy fallback only when unavailable");
+        Expect(std::any_of(catalog->glove_paint_kits.begin(), catalog->glove_paint_kits.end(),
+                   [&](const auto& entry) { return entry.id == paint; }), "every resolved glove remains selectable");
+        Expect(!catalog->weapon_paint_uses_legacy_model.contains(paint) &&
+            std::none_of(catalog->weapon_paint_kits.begin(), catalog->weapon_paint_kits.end(),
+                [&](const auto& entry) { return entry.id == paint; }), "low-ID gloves cannot leak into firearm paints");
+    }
+    Expect(!catalog->glove_paint_compatibility.contains(10020), "conflicting exact evidence must block a glove");
+    Expect(catalog->weapon_paint_compatibility.at(7) == std::vector<int> {44, 10123} &&
+        !catalog->glove_paint_compatibility.contains(10123),
+        "exact firearm evidence wins over numeric ranges, misleading prefixes and localized names");
+    Expect(std::any_of(catalog->glove_paint_kits.begin(), catalog->glove_paint_kits.end(),
+               [](const auto& entry) { return entry.id == 1417 && entry.name == "隐知"; }),
+        "Occult retains the installed localized name");
+    const auto vpk_path = std::filesystem::temp_directory_path() /
+        ("nskinz-glove-icons-" + std::to_string(GetCurrentProcessId()) + ".vpk");
+    const char prefix[] = "vtex_c\0panorama/images/econ/default_generated\0";
+    std::string tree(prefix, sizeof(prefix) - 1);
+    for (const auto filename : {"sporty_gloves_glove_sport_velvet_red_light_png", "weapon_knife_karambit_test_light_png"})
+    {
+        tree.append(filename); tree.push_back('\0');
+        const auto append = [&tree](const auto value) { tree.append(reinterpret_cast<const char*>(&value), sizeof(value)); };
+        append(std::uint32_t {0}); append(std::uint16_t {0}); append(std::uint16_t {0x7FFF});
+        append(std::uint32_t {0}); append(std::uint32_t {0}); append(std::uint16_t {0xFFFF});
+    }
+    tree.append(3, '\0');
+    {
+        std::ofstream stream(vpk_path, std::ios::binary);
+        const std::array<std::uint32_t, 3> header {0x55AA1234u, 1u, static_cast<std::uint32_t>(tree.size())};
+        stream.write(reinterpret_cast<const char*>(header.data()), sizeof(header));
+        stream.write(tree.data(), static_cast<std::streamsize>(tree.size()));
+    }
+    const auto icon_paths = nskinzcs2::CatalogBuilder::ReadInventoryIconPathsFromVpk(vpk_path);
+    std::filesystem::remove(vpk_path);
+    Expect(icon_paths.has_value() && icon_paths->find("sporty_gloves_glove_sport_velvet_red_light_png.vtex_c") != std::string::npos &&
+        icon_paths->find("weapon_knife_karambit_test_light_png.vtex_c") != std::string::npos,
+        "VPK reader must retain glove icons as well as weapon/knife icons");
+    nskinzcs2::model::ConfigDocument config;
+    nskinzcs2::model::GloveProfile glove;
+    glove.enabled = true; glove.xuid = 123; glove.mode = nskinzcs2::model::GloveProfileMode::ModelAndFinish;
+    glove.model_definition = 5030; glove.paint_kit = 1417;
+    config.glove_profiles.push_back(glove);
+    const auto plan = nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog);
+    Expect(plan.validation_issue.empty() && plan.glove_item_count == 2,
+        "low-ID Occult must generate both default T and CT glove rewrite requests");
+    config.glove_profiles[0].model_definition = 5031;
+    Expect(!nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog).validation_issue.empty(),
+        "a low-ID sport finish cannot be requested on driver gloves");
+}
+
+void TestKeychainModelInheritance()
+{
+    constexpr std::string_view items = R"kv("items_game"
+{
+    "items"
+    {
+    }
+    "qualities"
+    {
+    }
+    "paint_kits"
+    {
+        "0"
+        {
+            "name" "default"
+        }
+    }
+    "keychain_definitions"
+    {
+        "1"
+        {
+            "name" "base_charm"
+            "pedestal_display_model" "weapons/keychains/base.vmdl"
+        }
+        "2"
+        {
+            "name" "highlight"
+            "base" "base_charm"
+        }
+        "3"
+        {
+            "name" "nested_highlight"
+            "base" "highlight"
+        }
+        "4"
+        {
+            "name" "missing_base"
+            "base" "unavailable"
+        }
+        "5"
+        {
+            "name" "cycle_a"
+            "base" "cycle_b"
+        }
+        "6"
+        {
+            "name" "cycle_b"
+            "base" "cycle_a"
+        }
+    }
+}
+)kv";
+    const auto catalog = nskinzcs2::CatalogBuilder::BuildCatalogFromGameText(items, "\"Tokens\"\n{\n}\n");
+    Expect(catalog.has_value(), "keychain inheritance fixture parses");
+    for (const auto id : {1, 2, 3})
+    {
+        Expect(catalog->keychain_visuals.at(id).resolved_model_resource_path == "weapons/keychains/base.vmdl_c",
+            "souvenir keychains inherit their named base model, including nested bases");
+    }
+    for (const auto id : {4, 5, 6})
+    {
+        Expect(!catalog->keychain_visuals.contains(id), "missing and cyclic keychain bases never fabricate a model");
+    }
+}
+
 void TestCatalogFromRealGameFilesIfProvided()
 {
     const char* items_game_env = std::getenv("NSKINZCS2_REAL_ITEMS_GAME");
@@ -2948,6 +3190,29 @@ void TestCatalogFromRealGameFilesIfProvided()
         Expect(std::any_of(catalog->glove_items.begin(), catalog->glove_items.end(),
                    [&](const nskinzcs2::model::NamedId& value) { return value.id == definition; }),
             "every glove compatibility pair must target a selectable glove model");
+    }
+    for (const auto& paint : catalog->glove_paint_kits)
+    {
+        if (paint.id == 0 || paint.id == 9001) continue; // No change / Workshop placeholder.
+        Expect(catalog->glove_paint_compatibility.contains(paint.id),
+            "every installed glove finish must have a compatible model, including low-ID modern paints");
+        Expect(!catalog->weapon_paint_uses_legacy_model.contains(paint.id),
+            "glove finishes must not retain firearm model-age metadata");
+        nskinzcs2::model::ConfigDocument config;
+        nskinzcs2::model::GloveProfile glove;
+        glove.enabled = true; glove.xuid = 123; glove.mode = nskinzcs2::model::GloveProfileMode::ModelAndFinish;
+        glove.model_definition = catalog->glove_paint_compatibility.at(paint.id); glove.paint_kit = paint.id;
+        config.glove_profiles.push_back(glove);
+        const auto plan = nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog);
+        Expect(plan.validation_issue.empty() && plan.glove_item_count == 2,
+            "every installed glove finish must be accepted in both T/CT Temporary Demo requests");
+    }
+    if (const auto output = std::getenv("NSKINZCS2_CATALOG_AUDIT_OUTPUT"); output != nullptr)
+    {
+        Expect(nskinzcs2::CatalogStore::Save(std::filesystem::path(output), *catalog), "save requested catalog audit snapshot");
+        const auto loaded = nskinzcs2::CatalogStore::Load(std::filesystem::path(output));
+        Expect(loaded.has_value() && loaded->glove_paint_compatibility == catalog->glove_paint_compatibility,
+            "external panel snapshot must preserve all glove associations");
     }
     std::cout << "compatibility coverage: guns=" << checked_weapons << ", pairs=" << compatible_pairs << '\n';
     std::cout << "compatibility coverage: knives=" << (catalog->knife_items.size() - 1)
@@ -6683,6 +6948,8 @@ int RunAllTests()
             RunNamedTest("TestCatalogStoreRoundTrip", TestCatalogStoreRoundTrip);
             RunNamedTest("TestCatalogFromGameText", TestCatalogFromGameText);
             RunNamedTest("TestWeaponPaintCompatibility", TestWeaponPaintCompatibility);
+            RunNamedTest("TestModernGloveCatalog", TestModernGloveCatalog);
+            RunNamedTest("TestKeychainModelInheritance", TestKeychainModelInheritance);
             RunNamedTest("TestCatalogFromRealGameFilesIfProvided", TestCatalogFromRealGameFilesIfProvided);
             RunNamedTest("TestM4A4ModernLegacyTransition", TestM4A4ModernLegacyTransition);
             RunNamedTest("TestStandardWeaponAttributeSynchronization", TestStandardWeaponAttributeSynchronization);
@@ -6746,6 +7013,8 @@ int RunAllTests()
         RunNamedTest("TestCatalogFromGameFiles", TestCatalogFromGameFiles);
         RunNamedTest("TestCatalogFromGameText", TestCatalogFromGameText);
         RunNamedTest("TestWeaponPaintCompatibility", TestWeaponPaintCompatibility);
+        RunNamedTest("TestModernGloveCatalog", TestModernGloveCatalog);
+        RunNamedTest("TestKeychainModelInheritance", TestKeychainModelInheritance);
         RunNamedTest("TestCatalogFromRealGameFilesIfProvided", TestCatalogFromRealGameFilesIfProvided);
         RunNamedTest("TestDuplicateDetection", TestDuplicateDetection);
         RunNamedTest("TestVersionCandidateFiltering", TestVersionCandidateFiltering);

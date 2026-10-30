@@ -207,7 +207,7 @@ constexpr std::array<IdNameSeed, 36> kBaseItems = {
     IdNameSeed {25, "XM1014"},
 };
 
-constexpr std::array<IdNameSeed, 20> kKnifeItems = {
+constexpr std::array<IdNameSeed, 21> kKnifeItems = {
     IdNameSeed {0, "Default"},
     IdNameSeed {500, "Bayonet"},
     IdNameSeed {503, "Classic Knife"},
@@ -228,6 +228,7 @@ constexpr std::array<IdNameSeed, 20> kKnifeItems = {
     IdNameSeed {522, "Stiletto Knife"},
     IdNameSeed {523, "Talon Knife"},
     IdNameSeed {525, "Skeleton Knife"},
+    IdNameSeed {526, "Kukri Knife"},
 };
 
 constexpr std::array<IdNameSeed, 11> kGloveItems = {
@@ -323,7 +324,7 @@ constexpr std::array<IdNameSeed, 1> kKeychainKits = {
     },
 };
 
-constexpr std::array<VisualSeed, 31> kVisualSeeds = {{
+constexpr std::array<VisualSeed, 32> kVisualSeeds = {{
     {42, "Knife", "models/weapons/w_knife_default_ct.mdl", "models/weapons/v_knife_default_ct.mdl", "knife_default_ct", true, false},
     {59, "Knife (T)", "models/weapons/w_knife_default_t.mdl", "models/weapons/v_knife_default_t.mdl", "knife_t", true, false},
     {500, "Bayonet", "models/weapons/w_knife_bayonet.mdl", "models/weapons/v_knife_bayonet.mdl", "bayonet", true, false},
@@ -345,6 +346,7 @@ constexpr std::array<VisualSeed, 31> kVisualSeeds = {{
     {522, "Stiletto Knife", "models/weapons/w_knife_stiletto.mdl", "models/weapons/v_knife_stiletto.mdl", "knife_stiletto", true, false},
     {523, "Talon Knife", "models/weapons/w_knife_widowmaker.mdl", "models/weapons/v_knife_widowmaker.mdl", "knife_widowmaker", true, false},
     {525, "Skeleton Knife", "models/weapons/w_knife_skeleton.mdl", "models/weapons/v_knife_skeleton.mdl", "knife_skeleton", true, false},
+    {526, "Kukri Knife", "weapons/models/knife/knife_kukri/weapon_knife_kukri.vmdl", "weapons/models/knife/knife_kukri/weapon_knife_kukri.vmdl", "knife_kukri", true, false},
     {5027, "Bloodhound", "models/weapons/w_models/arms/w_glove_bloodhound.mdl", "models/weapons/v_models/arms/glove_bloodhound/v_glove_bloodhound.mdl", "", false, true},
     {5028, "Default (Terrorists)", "models/weapons/w_models/arms/w_glove_fingerless.mdl", "models/weapons/v_models/arms/glove_fingerless/v_glove_fingerless.mdl", "", false, true},
     {5029, "Default (Counter-Terrorists)", "models/weapons/w_models/arms/w_glove_hardknuckle.mdl", "models/weapons/v_models/arms/glove_hardknuckle/v_glove_hardknuckle.mdl", "", false, true},
@@ -808,8 +810,7 @@ std::optional<std::string> ReadInventoryIconPathsFromVpkImpl(
                 static_cast<void>(offset);
                 static_cast<void>(length);
 
-                if (extension == "vtex_c" && directory == kInventoryIconDirectory &&
-                    filename.starts_with("weapon_"))
+                if (extension == "vtex_c" && directory == kInventoryIconDirectory)
                 {
                     result.append(filename);
                     result.append(".vtex_c\n");
@@ -1774,6 +1775,9 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
 
     std::unordered_map<int, std::string> base_item_names;
     std::unordered_map<std::string, int> weapon_definitions_by_name;
+    std::unordered_map<std::string, int> glove_definitions_by_name;
+    std::unordered_map<int, std::unordered_set<int>> exact_glove_definitions_by_paint;
+    std::unordered_set<int> exact_weapon_paints;
     std::unordered_map<std::string, std::vector<int>> paint_ids_by_name;
     std::unordered_map<int, std::string> knife_names;
     std::unordered_map<int, std::string> glove_names;
@@ -1812,6 +1816,7 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
         if (is_glove)
         {
             glove_names[id] = display_name;
+            glove_definitions_by_name.emplace(raw_name, id);
         }
         else if (is_knife)
         {
@@ -1897,6 +1902,10 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
         const auto raw_name = FindFlatValue(paint_kit, "name");
         const auto name = ResolvePaintKitDisplayName(paint_kit, localization);
         const NamedId entry {id, name};
+        if (id > 0 && !raw_name.empty())
+        {
+            paint_ids_by_name[std::string(raw_name)].push_back(id);
+        }
 
         if (id == 0)
         {
@@ -1905,10 +1914,15 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
             continue;
         }
 
-        if (id == 9001 || id >= 10000)
+        const auto compatible_glove_definition = ResolveCompatibleGloveDefinitionIndex(raw_name);
+        catalog.weapon_paint_uses_legacy_model[id] = FindFlatValue(paint_kit, "use_legacy_model") == "1";
+        // Modern glove finishes share the low ID range with firearm paints.
+        // Material metadata identifies candidates; exact game pairs below
+        // resolve the model without depending on a paint's name or numeric age.
+        if (id == 9001 || compatible_glove_definition != 0 ||
+            StartsWith(FindFlatValue(paint_kit, "composite_material_path"), "gloves/"))
         {
             glove_paint_kits[id] = entry;
-            const auto compatible_glove_definition = ResolveCompatibleGloveDefinitionIndex(raw_name);
             if (compatible_glove_definition != 0)
             {
                 glove_paint_compatibility[id] = compatible_glove_definition;
@@ -1917,12 +1931,28 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
         }
 
         weapon_paint_kits[id] = entry;
-        catalog.weapon_paint_uses_legacy_model[id] = FindFlatValue(paint_kit, "use_legacy_model") == "1";
-        if (id > 0 && !raw_name.empty())
-        {
-            paint_ids_by_name[std::string(raw_name)].push_back(id);
-        }
     }
+
+    const auto record_paint_pair = [&](const std::string_view paint_name, const std::string_view item_name)
+    {
+        const auto paints = paint_ids_by_name.find(std::string(paint_name));
+        if (paints == paint_ids_by_name.end()) { return; }
+        if (const auto glove = glove_definitions_by_name.find(std::string(item_name));
+            glove != glove_definitions_by_name.end())
+        {
+            for (const auto paint : paints->second)
+            {
+                exact_glove_definitions_by_paint[paint].insert(glove->second);
+            }
+        }
+        else if (const auto weapon = weapon_definitions_by_name.find(std::string(item_name));
+                 weapon != weapon_definitions_by_name.end())
+        {
+            auto& allowed = catalog.weapon_paint_compatibility[weapon->second];
+            allowed.insert(allowed.end(), paints->second.begin(), paints->second.end());
+            exact_weapon_paints.insert(paints->second.begin(), paints->second.end());
+        }
+    };
 
     // Use exact game-defined combinations, not localized names, paint prefixes,
     // or model-age guesses. Collections alone miss loot-list-only variants.
@@ -1943,11 +1973,7 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
                 if (values.size() < 2 || !StartsWith(values[0], "[")) { continue; }
                 const auto close = values[0].find(']');
                 if (close == std::string::npos || close <= 1) { continue; }
-                const auto weapon = weapon_definitions_by_name.find(values[0].substr(close + 1));
-                const auto paints = paint_ids_by_name.find(values[0].substr(1, close - 1));
-                if (weapon == weapon_definitions_by_name.end() || paints == paint_ids_by_name.end()) { continue; }
-                auto& allowed = catalog.weapon_paint_compatibility[weapon->second];
-                allowed.insert(allowed.end(), paints->second.begin(), paints->second.end());
+                record_paint_pair(values[0].substr(1, close - 1), values[0].substr(close + 1));
             }
         }
     }
@@ -1961,6 +1987,10 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
         std::vector<std::pair<std::string_view, int>> weapon_names;
         weapon_names.reserve(weapon_definitions_by_name.size());
         for (const auto& [raw_name, definition] : weapon_definitions_by_name)
+        {
+            weapon_names.emplace_back(raw_name, definition);
+        }
+        for (const auto& [raw_name, definition] : glove_definitions_by_name)
         {
             weapon_names.emplace_back(raw_name, definition);
         }
@@ -2003,13 +2033,14 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
                     break;
                 }
             }
-            if (!recognized_suffix || !StartsWith(icon, "weapon_"))
+            if (!recognized_suffix)
             {
                 continue;
             }
 
             for (const auto& [weapon_name, definition] : weapon_names)
             {
+                static_cast<void>(definition);
                 std::string prefix(weapon_name);
                 prefix.push_back('_');
                 if (!StartsWith(icon, prefix))
@@ -2018,19 +2049,51 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
                 }
 
                 const auto paint_name = icon.substr(prefix.size());
-                if (const auto paints = paint_ids_by_name.find(std::string(paint_name));
-                    paints != paint_ids_by_name.end())
-                {
-                    auto& allowed = catalog.weapon_paint_compatibility[definition];
-                    allowed.insert(allowed.end(), paints->second.begin(), paints->second.end());
-                }
+                record_paint_pair(paint_name, weapon_name);
                 break;
             }
         }
     }
+    for (const auto paint : exact_weapon_paints)
+    {
+        if (exact_glove_definitions_by_paint.contains(paint)) { continue; }
+        if (const auto entry = glove_paint_kits.find(paint); entry != glove_paint_kits.end())
+        {
+            weapon_paint_kits[paint] = entry->second;
+            glove_paint_kits.erase(entry);
+            glove_paint_compatibility.erase(paint);
+        }
+    }
+    for (const auto& [paint, definitions] : exact_glove_definitions_by_paint)
+    {
+        // Exact associations override the legacy prefix fallback. They also
+        // move low-ID gloves out of the firearm catalog, even without material
+        // metadata. Conflicting model evidence must never select an arbitrary
+        // glove based on unordered-map iteration order.
+        if (const auto entry = weapon_paint_kits.find(paint); entry != weapon_paint_kits.end())
+        {
+            glove_paint_kits[paint] = entry->second;
+            weapon_paint_kits.erase(entry);
+        }
+        if (definitions.size() == 1)
+        {
+            glove_paint_compatibility[paint] = *definitions.begin();
+        }
+        else
+        {
+            glove_paint_compatibility.erase(paint);
+            catalog.warnings.push_back("Conflicting glove model associations for paint " + std::to_string(paint) + "; blocked.");
+        }
+    }
+    for (const auto& [paint, entry] : glove_paint_kits)
+    {
+        static_cast<void>(entry);
+        catalog.weapon_paint_uses_legacy_model.erase(paint);
+    }
     for (auto& [definition, paints] : catalog.weapon_paint_compatibility)
     {
         static_cast<void>(definition);
+        std::erase_if(paints, [&](const int paint) { return glove_paint_kits.contains(paint); });
         std::sort(paints.begin(), paints.end());
         paints.erase(std::unique(paints.begin(), paints.end()), paints.end());
     }
@@ -2113,6 +2176,15 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
     keychain_kits.emplace(
         0,
         NamedId {0, nskinzcs2::build::kUiLanguageChinese ? "\xE6\x97\xA0" : "None"});
+    std::unordered_map<std::string, const FlatSectionEntry*> keychains_by_name;
+    for (const auto& [key, entry] : keychain_definitions_section)
+    {
+        static_cast<void>(key);
+        if (const auto name = FindFlatValue(entry, "name"); !name.empty())
+        {
+            keychains_by_name.emplace(name, &entry);
+        }
+    }
     for (const auto& [keychain_key, keychain_definition] : keychain_definitions_section)
     {
         int id = 0;
@@ -2126,7 +2198,20 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
             continue;
         }
 
-        const auto pedestal_display_model = FindFlatValue(keychain_definition, "pedestal_display_model");
+        auto pedestal_display_model = FindFlatValue(keychain_definition, "pedestal_display_model");
+        // Highlight-reel souvenir charms inherit the actual model through
+        // their named base. Missing/cyclic bases stay unresolved, not guessed.
+        auto* model_source = &keychain_definition;
+        std::unordered_set<std::string_view> visited_bases;
+        while (pedestal_display_model.empty())
+        {
+            const auto base = FindFlatValue(*model_source, "base");
+            if (base.empty() || !visited_bases.insert(base).second) { break; }
+            const auto parent = keychains_by_name.find(std::string(base));
+            if (parent == keychains_by_name.end()) { break; }
+            model_source = parent->second;
+            pedestal_display_model = FindFlatValue(*model_source, "pedestal_display_model");
+        }
         if (!pedestal_display_model.empty())
         {
             auto& visual = catalog.keychain_visuals[id];
