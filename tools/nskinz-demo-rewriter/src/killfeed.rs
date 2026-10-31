@@ -191,7 +191,7 @@ struct Target {
 
 fn target(steam: u64, cosmetic: &Cosmetic) -> Result<Target> {
     let token = knife_token(cosmetic.definition).context("knife has no death-event token")?;
-    let (high, low) = fnv_identity(steam, cosmetic.definition, 0x4B4E_4946_455F_4944);
+    let (high, low) = knife_identity(steam, cosmetic.definition, cosmetic.paint_kit);
     let item_id = (u64::from(high) << 32 | u64::from(low)).to_string();
     // Verified against real default and painted knife death records: F-prefix,
     // paint in the next 32 bits, definition in the low 16 bits.
@@ -754,7 +754,7 @@ mod tests {
         expected.keys[4].val_string =
             Some((0xF000_0000_0000_0000u64 | 570 << 16 | 507).to_string());
         assert_eq!(actual, expected);
-        let (high, low) = fnv_identity(steam, 507, 0x4B4E_4946_455F_4944);
+        let (high, low) = knife_identity(steam, 507, 570);
         assert_eq!(
             actual.keys[0].val_string(),
             (u64::from(high) << 32 | u64::from(low)).to_string()
@@ -894,7 +894,7 @@ mod tests {
                             0xF000_0000_0000_0000u64 | u64::from(definition)
                         )
                     );
-                    let (high, low) = fnv_identity(actor.steam, definition, 0x4B4E_4946_455F_4944);
+                    let (high, low) = knife_identity(actor.steam, definition, 0);
                     assert_eq!(
                         after.fields["weapon_itemid"],
                         format!("String(\"{}\")", u64::from(high) << 32 | u64::from(low))

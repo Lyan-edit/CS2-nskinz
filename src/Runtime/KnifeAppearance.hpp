@@ -227,13 +227,19 @@ int ResolveKnifeRuntimeOverrideDefinition(
 // Empty/default demo knife views use an invalid econ identity.  A model swap
 // needs a stable target identity before Source 2 builds the target subclass.
 // Existing real inventory identities are preserved.
-std::uint32_t BuildSyntheticKnifeEconItemHigh(int target_definition_index) noexcept;
-std::uint32_t ResolveKnifeEconItemHigh(
+std::uint32_t BuildDemoKnifeEconItemHigh(int target_definition_index) noexcept;
+std::uint32_t SelectDemoKnifeEconItemHigh(
     std::uint32_t source_item_id_high,
     int target_definition_index) noexcept;
-bool IsKnifeEconItemHighCompatible(
+bool IsDemoKnifeEconItemHighCompatible(
     std::uint32_t item_id_high,
     int target_definition_index) noexcept;
+// Finish-only UI caches must not retain the source inventory identity.  Use a
+// stable client-only identity that changes with player, knife and paint.
+std::uint32_t BuildKnifeFinishEconItemHigh(
+    std::uint64_t xuid,
+    int target_definition_index,
+    int paint_kit) noexcept;
 std::uint64_t BuildKnifeProfileApplySignature(
     const KnifeAppearanceRequest& request,
     std::uint64_t xuid,

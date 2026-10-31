@@ -2,19 +2,19 @@
 
 namespace nskinzcs2::runtime
 {
-SyntheticEconItemIdentity BuildSyntheticGloveEconItemIdentity(
+DemoEconItemIdentity BuildDemoGloveEconItemIdentity(
     const std::uint64_t xuid,
     const int definition_index) noexcept
 {
-    constexpr std::uint32_t synthetic_namespace = 0xC5210000u;
+    constexpr std::uint32_t demo_item_namespace = 0xC5210000u;
     constexpr std::uint64_t fnv_offset = 1469598103934665603ull;
     constexpr std::uint64_t fnv_prime = 1099511628211ull;
     constexpr std::uint64_t glove_slot_salt = 0x474C4F56455F4944ull; // "GLOVE_ID"
 
     const auto normalized_definition =
         static_cast<std::uint32_t>(definition_index > 0 ? definition_index : 0) & 0xFFFFu;
-    SyntheticEconItemIdentity identity;
-    identity.high = synthetic_namespace | normalized_definition;
+    DemoEconItemIdentity identity;
+    identity.high = demo_item_namespace | normalized_definition;
 
     std::uint64_t hash = fnv_offset;
     const auto mix = [&hash](const std::uint64_t value)

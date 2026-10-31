@@ -411,15 +411,15 @@ int ResolveKnifeRuntimeOverrideDefinition(
         : 0;
 }
 
-std::uint32_t BuildSyntheticKnifeEconItemHigh(const int target_definition_index) noexcept
+std::uint32_t BuildDemoKnifeEconItemHigh(const int target_definition_index) noexcept
 {
-    constexpr std::uint32_t synthetic_namespace = 0xC5210000u;
-    return synthetic_namespace |
+    constexpr std::uint32_t demo_item_namespace = 0xC5210000u;
+    return demo_item_namespace |
         (static_cast<std::uint32_t>(target_definition_index > 0 ? target_definition_index : 0) &
          0xFFFFu);
 }
 
-std::uint32_t ResolveKnifeEconItemHigh(
+std::uint32_t SelectDemoKnifeEconItemHigh(
     const std::uint32_t source_item_id_high,
     const int target_definition_index) noexcept
 {
@@ -427,10 +427,10 @@ std::uint32_t ResolveKnifeEconItemHigh(
     {
         return source_item_id_high;
     }
-    return BuildSyntheticKnifeEconItemHigh(target_definition_index);
+    return BuildDemoKnifeEconItemHigh(target_definition_index);
 }
 
-bool IsKnifeEconItemHighCompatible(
+bool IsDemoKnifeEconItemHighCompatible(
     const std::uint32_t item_id_high,
     const int target_definition_index) noexcept
 {
@@ -440,14 +440,30 @@ bool IsKnifeEconItemHighCompatible(
     }
 
     constexpr std::uint32_t namespace_mask = 0xFFFF0000u;
-    constexpr std::uint32_t synthetic_namespace = 0xC5210000u;
-    if ((item_id_high & namespace_mask) != synthetic_namespace)
+    constexpr std::uint32_t demo_item_namespace = 0xC5210000u;
+    if ((item_id_high & namespace_mask) != demo_item_namespace)
     {
         // A real demo inventory identity is authoritative and must survive a
         // model-only replacement just as it does in the reference output.
         return true;
     }
-    return item_id_high == BuildSyntheticKnifeEconItemHigh(target_definition_index);
+    return item_id_high == BuildDemoKnifeEconItemHigh(target_definition_index);
+}
+
+std::uint32_t BuildKnifeFinishEconItemHigh(
+    const std::uint64_t xuid,
+    const int target_definition_index,
+    const int paint_kit) noexcept
+{
+    std::uint64_t hash = 0xCBF29CE484222325ull;
+    HashCombine(hash, xuid);
+    HashCombine(hash, static_cast<std::uint64_t>(
+        static_cast<std::uint32_t>(std::max(0, target_definition_index))));
+    HashCombine(hash, static_cast<std::uint64_t>(
+        static_cast<std::uint32_t>(std::max(0, paint_kit))));
+    auto payload = static_cast<std::uint32_t>((hash ^ (hash >> 32)) & 0x00FFFFFFu);
+    if (payload == 0) payload = 1;
+    return 0xC5000000u | payload;
 }
 
 std::uint64_t BuildKnifeProfileApplySignature(

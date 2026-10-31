@@ -1132,6 +1132,31 @@ fn fnv_identity(xuid: u64, definition: u16, salt: u64) -> (u32, u32) {
     (0xC521_0000 | definition as u32, low)
 }
 
+fn knife_identity(xuid: u64, definition: u16, paint_kit: i32) -> (u32, u32) {
+    const OFFSET: u64 = 1_469_598_103_934_665_603;
+    const PRIME: u64 = 1_099_511_628_211;
+    const SALT: u64 = 0x4B4E_4946_455F_4944;
+    let paint = paint_kit.max(0) as u64;
+    let mut hash = OFFSET;
+    for value in [SALT, xuid, definition as u64, paint] {
+        hash ^= value;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    let folded = (hash ^ (hash >> 32)) as u32;
+    let mut high = 0xC500_0000 | ((folded.rotate_left(11)) & 0x00FF_FFFF);
+    let mut low = folded;
+    if high == 0xC500_0000 {
+        high |= 1;
+    }
+    if low == 0 || low == u32::MAX {
+        low ^= 0x6E53_6B7A;
+    }
+    if low == 0 || low == u32::MAX {
+        low = 1;
+    }
+    (high, low)
+}
+
 #[derive(Clone)]
 struct KnifeRule {
     steam: u64,
@@ -1566,7 +1591,7 @@ fn push_attribute(
 fn knife_fields(rule: &KnifeRule) -> Vec<(String, FieldValue)> {
     let c = &rule.cosmetic;
     let account = rule.steam as u32;
-    let (high, low) = fnv_identity(rule.steam, c.definition, 0x4B4E_4946_455F_4944);
+    let (high, low) = knife_identity(rule.steam, c.definition, c.paint_kit);
     let prefix = "m_AttributeManager.m_Item";
     let mut fields = vec![
         (
@@ -2597,6 +2622,16 @@ mod tests {
         fields
             .iter()
             .any(|(field_name, value)| field_name == name && *value == expected)
+    }
+
+    #[test]
+    fn knife_ui_identity_changes_with_paint_and_stays_namespaced() {
+        let steam = 76_561_198_000_000_000;
+        let tiger_tooth = knife_identity(steam, 507, 409);
+        let gamma_doppler = knife_identity(steam, 507, 570);
+        assert_ne!(tiger_tooth, gamma_doppler);
+        assert_eq!(tiger_tooth.0 & 0xFF00_0000, 0xC500_0000);
+        assert_eq!(gamma_doppler.0 & 0xFF00_0000, 0xC500_0000);
     }
 
     #[test]

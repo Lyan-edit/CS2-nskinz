@@ -200,7 +200,7 @@ struct GloveApplyResult
     std::wstring issue;
 };
 
-struct SyntheticEconItemIdentity
+struct DemoEconItemIdentity
 {
     std::uint32_t high = 0;
     std::uint32_t low = 0;
@@ -217,7 +217,7 @@ struct SyntheticEconItemIdentity
 // Give the runtime-owned view a stable, process-independent identity instead.
 // The high-word namespace mirrors the observable demo state produced by the
 // reference application; the low word is an independent nSkinz FNV-1a hash.
-SyntheticEconItemIdentity BuildSyntheticGloveEconItemIdentity(
+DemoEconItemIdentity BuildDemoGloveEconItemIdentity(
     std::uint64_t xuid,
     int definition_index) noexcept;
 

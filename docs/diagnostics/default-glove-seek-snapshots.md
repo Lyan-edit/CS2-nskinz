@@ -8,14 +8,14 @@ The target Pawn (handle `3326094`) is created at tick 1335 with team 0, joins CT
 
 Independent seek reads explain the discrepancy:
 
-| Read mode / position | Failed nSkinz | Insight reference | Repaired nSkinz |
-| --- | --- | --- | --- |
-| Linear, tick 1441 | definition 5034, quality 3, 3 attributes | definition 5030, quality 3, 3 attributes | definition 5034, quality 3, 3 attributes |
-| Seek to tick 40000 (CT) | definition 0, quality -1, 0 attributes | definition 5030, quality 3, 3 attributes | definition 5034, quality 3, 3 attributes |
-| Seek to tick 70000 (CT) | definition 0, quality -1, 0 attributes | definition 5030, quality 3, 3 attributes | definition 5034, quality 3, 3 attributes |
-| Seek to tick 100000 (T) | definition 0, quality -1, 0 attributes | default glove, not requested for this team | definition 5034, quality 3, 3 attributes |
+| Read mode / position | Failed nSkinz | Repaired nSkinz |
+| --- | --- | --- |
+| Linear, tick 1441 | definition 5034, quality 3, 3 attributes | definition 5034, quality 3, 3 attributes |
+| Seek to tick 40000 (CT) | definition 0, quality -1, 0 attributes | definition 5034, quality 3, 3 attributes |
+| Seek to tick 70000 (CT) | definition 0, quality -1, 0 attributes | definition 5034, quality 3, 3 attributes |
+| Seek to tick 100000 (T) | definition 0, quality -1, 0 attributes | definition 5034, quality 3, 3 attributes |
 
-The requested cosmetics differ: nSkinz was configured for Specialist Gloves / Crimson Kimono on both teams; Insight was configured for Sport Gloves / Pandora's Box on CT. These model/paint differences and the T-side scope are intentional. The defect is that the failed nSkinz checkpoints omit the requested glove entirely. Both outputs parse successfully as Demo containers.
+The defect is that the failed nSkinz checkpoints omit the requested glove entirely. Both the failed and repaired outputs parse successfully as Demo containers.
 
 ## Root cause
 

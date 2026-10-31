@@ -51694,7 +51694,7 @@ bool DoesAppliedPawnGloveBaseFieldsMatchRequest(
     }
 
     const auto expected_item_identity =
-        nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity(
+        nskinzcs2::runtime::BuildDemoGloveEconItemIdentity(
             xuid,
             expected_definition_index);
     std::uint32_t actual_item_id_high = 0;
@@ -51809,7 +51809,7 @@ bool DoesGeneratedDemoPawnGloveMatchRequest(
     }
 
     const auto expected_item_identity =
-        nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity(
+        nskinzcs2::runtime::BuildDemoGloveEconItemIdentity(
             xuid,
             expected_definition_index);
     std::uint32_t actual_item_id_high = 0;
@@ -51870,10 +51870,10 @@ bool ApplyGloveFinishToPawnEconGloves(
 
     const auto quality = static_cast<std::uint8_t>(std::clamp(request.quality, 0, 255));
     const auto item_identity =
-        nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity(xuid, final_definition_index);
+        nskinzcs2::runtime::BuildDemoGloveEconItemIdentity(xuid, final_definition_index);
     if (!item_identity.IsValid())
     {
-        if (failure_issue != nullptr) *failure_issue = L"synthetic glove item identity is invalid";
+        if (failure_issue != nullptr) *failure_issue = L"demo glove item identity is invalid";
         return false;
     }
     const auto item_id_high = item_identity.high;
@@ -52476,7 +52476,7 @@ bool DoesAppliedGloveCarrierMatchProfile(
     }
 
     const auto expected_item_identity =
-        nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity(
+        nskinzcs2::runtime::BuildDemoGloveEconItemIdentity(
             xuid,
             expected_definition_index);
     std::uint32_t actual_item_id_high = 0;
@@ -52657,7 +52657,7 @@ bool ApplyGloveProfileToWearable(
         ResolveRequestedGloveDefinitionIndex(request, current_definition_index));
     const auto quality = static_cast<std::uint8_t>(std::clamp(request.quality, 0, 255));
     const auto item_identity =
-        nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity(xuid, final_definition_index);
+        nskinzcs2::runtime::BuildDemoGloveEconItemIdentity(xuid, final_definition_index);
     if (!item_identity.IsValid())
     {
         return false;
@@ -55950,11 +55950,18 @@ bool DoesAppliedEconItemMatchProfile(
             SafeReadField(item_view, offsets.item_view_item_id_high, actual_item_id_high);
         const auto knife_identity_compatible =
             IsKnifeProfile(profile) &&
-            nskinzcs2::runtime::IsKnifeEconItemHighCompatible(
-                actual_item_id_high,
-                expected_definition_index);
+            (ProfileHasExplicitPaintIntent(profile)
+                ? actual_item_id_high == nskinzcs2::runtime::BuildKnifeFinishEconItemHigh(
+                    xuid,
+                    expected_definition_index,
+                    profile.paint_kit)
+                : nskinzcs2::runtime::IsDemoKnifeEconItemHighCompatible(
+                    actual_item_id_high,
+                    expected_definition_index));
         if (!item_id_high_read ||
-            (actual_item_id_high != 0xFFFFFFFFu && !knife_identity_compatible))
+            (IsKnifeProfile(profile) && ProfileHasExplicitPaintIntent(profile)
+                ? !knife_identity_compatible
+                : (actual_item_id_high != 0xFFFFFFFFu && !knife_identity_compatible)))
         {
             return false;
         }
@@ -56206,9 +56213,14 @@ bool ApplyProfileToEconItem(
     }
     const auto item_id_high =
         IsKnifeOverrideRequest(profile)
-            ? nskinzcs2::runtime::ResolveKnifeEconItemHigh(
-                  source_item_id_high,
-                  final_definition_index)
+            ? (ProfileHasExplicitPaintIntent(profile)
+                ? nskinzcs2::runtime::BuildKnifeFinishEconItemHigh(
+                    xuid,
+                    final_definition_index,
+                    profile.paint_kit)
+                : nskinzcs2::runtime::SelectDemoKnifeEconItemHigh(
+                    source_item_id_high,
+                    final_definition_index))
             : static_cast<std::uint32_t>(0xFFFFFFFFu);
     const auto item_id_low =
         (IsStandardWeaponProfile(profile) ||
@@ -81518,7 +81530,7 @@ IndependentKnifePrearmResult TryPrearmHolsteredIndependentKnife(
     }
 
     const auto expected_target_item_id_high =
-        nskinzcs2::runtime::ResolveKnifeEconItemHigh(
+        nskinzcs2::runtime::SelectDemoKnifeEconItemHigh(
             lease.snapshot.item_id_high,
             request.model_definition);
     const auto target_item_identity_matches = [&]()
@@ -82073,12 +82085,12 @@ bool PrepareIndependentKnifeFinishAttributes(const nskinzcs2::runtime::KnifeNati
         !VerifyStandardWeaponAttributes(item, offsets, BuildWeaponRefreshAttributesImpl(profile))) return false;
     const auto cache_key = nskinzcs2::runtime::BuildStandardWeaponMaterialCacheKey(
         profile, context.binding.xuid, context.target_definition);
-    const auto item_id_high = nskinzcs2::runtime::ResolveKnifeEconItemHigh(
+    const auto item_id_high = nskinzcs2::runtime::SelectDemoKnifeEconItemHigh(
         source_item_id_high,
         context.target_definition);
     // The model transaction already owns the TARGET item definition. Finish
     // setup changes only paint attributes and the target material-cache key;
-    // reassert the real/synthetic identity that the generic finish path does
+    // reassert the retained or demo-generated identity that the generic finish path does
     // not own.
     return offsets.item_view_item_id_low != 0 &&
         SafeWriteField(item, offsets.item_view_item_id_high, item_id_high) &&
@@ -82570,7 +82582,7 @@ IndependentKnifePrearmCallbackStage TryStageIndependentKnifePrearmHandoff(
         int committed_definition = 0;
         std::uint32_t committed_item_id_high = 0;
         const auto expected_item_id_high =
-            nskinzcs2::runtime::ResolveKnifeEconItemHigh(
+            nskinzcs2::runtime::SelectDemoKnifeEconItemHigh(
                 lease.snapshot.item_id_high,
                 lease.target_definition);
         if (!TryReadItemDefinitionIndex(lease.item_view, offsets, committed_definition) ||
@@ -84913,8 +84925,18 @@ void PollGameThreadStateModern()
                         HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, entity_index, signature) &&
                         HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, cached_hud_index, signature) &&
                         g_hook_state.standard_weapon_appearance_epochs.at(entity_index).knife_hud_material_signature == signature &&
-                        material_counts_match && VerifyKnifeFinishRefreshAttributeValues(
-                            weapon_item_view, g_hook_state.schema_offsets, stable_profile, nullptr))
+                        material_counts_match && DoesAppliedEconItemMatchProfile(
+                            entity,
+                            weapon_item_view,
+                            g_hook_state.schema_offsets,
+                            stable_profile,
+                            xuid,
+                            current_definition_index,
+                            true,
+                            false,
+                            true,
+                            nullptr,
+                            nullptr))
                     {
                         applied_weapon_entities.insert(entity_index);
                         prioritized_weapon_entities.insert(entity_index);

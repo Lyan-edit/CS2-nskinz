@@ -57,7 +57,10 @@ fn collect_fields(class: &str, event: EntityEvents, entity: &Entity) -> BTreeMap
         "m_iAccountID",
         "m_iInventoryPosition",
         "m_bInitialized",
+        "m_bDisallowSOC",
+        "m_bRestoreCustomMaterialAfterPrecache",
         "m_szCustomName",
+        "m_szCustomNameOverride",
         "m_NetworkedDynamicAttributes.m_Attributes",
     ] {
         insert_field(&mut fields, entity, format!("{prefix}.{suffix}"));
@@ -116,7 +119,12 @@ impl Observer for CosmeticInspector {
 
     fn on_entity(&mut self, ctx: &Context, event: EntityEvents, entity: &Entity) -> ObserverResult {
         let class = entity.class().name();
-        if class != "CCSPlayerPawn" && !class.contains("Wearable") && !class.contains("Glove") {
+        if class != "CCSPlayerPawn"
+            && !class.contains("Wearable")
+            && !class.contains("Glove")
+            && !class.contains("Knife")
+            && !class.contains("Weapon")
+        {
             return Ok(());
         }
 

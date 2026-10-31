@@ -40,7 +40,7 @@ as one transaction. The input demo is read-only. The output is a new file.
    `AnimAssetData` classification row that tells Source 2 to load that installed
    resource. Default-glove EconItemView fields and the changed flag are
    materialized on each selected pawn. Default firearm records receive
-   synthetic item identity, quality, paint, seed and normalized wear fields.
+   demo-generated item identity, quality, paint, seed and normalized wear fields.
    Sticker preset mode replaces only an existing slot's integer-union kit value,
    preserving wear, scale, rotation and CS2 offset/schema fields. A requested
    missing logical slot grows the same dynamic-attribute vector and receives the
@@ -88,7 +88,7 @@ file, the runtime disables only its live knife profiles for the local config
 snapshot. This prevents a late runtime write from replacing the atomic knife
 definition/model/animation transaction already present in the demo. Firearm
 and glove profiles remain enabled for painted-source passthrough items. A
-reconstructed glove is recognized read-only by its synthetic identity,
+reconstructed glove is recognized read-only by its demo-generated identity,
 definition, account and paint/seed/wear attributes; when those fields already
 match, the live glove write and native refresh callbacks are suppressed. This
 prevents the generated stream and the runtime refresh path from alternately

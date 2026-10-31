@@ -3918,7 +3918,7 @@ void TestWearableFactoryConfirmation()
 void TestKnifeAppearanceModule()
 {
     using nskinzcs2::runtime::BuildKnifeAppearanceRequest;
-    using nskinzcs2::runtime::BuildSyntheticKnifeEconItemHigh;
+    using nskinzcs2::runtime::BuildDemoKnifeEconItemHigh;
     using nskinzcs2::runtime::BuildKnifeFinishRequest;
     using nskinzcs2::runtime::BuildKnifeProfileApplySignature;
     using nskinzcs2::runtime::EvaluateKnifeApplyGate;
@@ -3931,25 +3931,33 @@ void TestKnifeAppearanceModule()
     using nskinzcs2::runtime::KnifeRenderVerificationReason;
     using nskinzcs2::runtime::ResolveKnifeAppearancePipelineRoute;
     using nskinzcs2::runtime::ResolveKnifeSlotMode;
-    using nskinzcs2::runtime::ResolveKnifeEconItemHigh;
-    using nskinzcs2::runtime::IsKnifeEconItemHighCompatible;
+    using nskinzcs2::runtime::SelectDemoKnifeEconItemHigh;
+    using nskinzcs2::runtime::IsDemoKnifeEconItemHighCompatible;
+    using nskinzcs2::runtime::BuildKnifeFinishEconItemHigh;
 
     Expect(
-        BuildSyntheticKnifeEconItemHigh(507) == 0xC52101FBu,
+        BuildDemoKnifeEconItemHigh(507) == 0xC52101FBu,
         "default karambit materialisation should encode definition 507 in the synthetic high word");
     Expect(
-        ResolveKnifeEconItemHigh(0x0000000Cu, 515) == 0x0000000Cu,
+        SelectDemoKnifeEconItemHigh(0x0000000Cu, 515) == 0x0000000Cu,
         "real knife inventory identities must survive a model replacement");
     Expect(
-        ResolveKnifeEconItemHigh(0xFFFFFFFFu, 515) == 0xC5210203u,
+        SelectDemoKnifeEconItemHigh(0xFFFFFFFFu, 515) == 0xC5210203u,
         "invalid default knife identities should materialise for the target definition");
     Expect(
-        IsKnifeEconItemHighCompatible(0xC5210203u, 515) &&
-            !IsKnifeEconItemHighCompatible(0xC52101FBu, 515),
-        "synthetic knife identity verification must reject a different target definition");
+        IsDemoKnifeEconItemHighCompatible(0xC5210203u, 515) &&
+            !IsDemoKnifeEconItemHighCompatible(0xC52101FBu, 515),
+        "demo knife identity verification must reject a different target definition");
     Expect(
-        IsKnifeEconItemHighCompatible(0x0000000Cu, 515),
+        IsDemoKnifeEconItemHighCompatible(0x0000000Cu, 515),
         "real inventory high words should remain compatible with the replacement model");
+    Expect(
+        BuildKnifeFinishEconItemHigh(76561198000000000ull, 507, 409) !=
+            BuildKnifeFinishEconItemHigh(76561198000000000ull, 507, 410),
+        "knife finish UI identity must change when the selected paint changes");
+    Expect(
+        BuildKnifeFinishEconItemHigh(76561198000000000ull, 507, 409) != 0x0000000Cu,
+        "knife finish UI identity must detach from the source inventory item");
     using nskinzcs2::runtime::ShouldApplyKnifeModelDefinitionOverride;
     using nskinzcs2::runtime::KnifeSlotMode;
 
@@ -5264,7 +5272,7 @@ void TestKnifeCarrierDiscoveryReadOnlyDiscovery()
 void TestGloveAppearanceModule()
 {
     using nskinzcs2::runtime::BuildGloveAppearanceRequest;
-    using nskinzcs2::runtime::BuildSyntheticGloveEconItemIdentity;
+    using nskinzcs2::runtime::BuildDemoGloveEconItemIdentity;
     using nskinzcs2::runtime::GloveCarrierKind;
     using nskinzcs2::runtime::EvaluateGloveCompatibility;
     using nskinzcs2::runtime::EvaluateGloveRenderVerification;
@@ -5281,10 +5289,10 @@ void TestGloveAppearanceModule()
 
     {
         constexpr std::uint64_t xuid = 76561199674674473ull;
-        const auto specialist = BuildSyntheticGloveEconItemIdentity(xuid, 5034);
-        const auto specialist_again = BuildSyntheticGloveEconItemIdentity(xuid, 5034);
-        const auto sport = BuildSyntheticGloveEconItemIdentity(xuid, 5030);
-        const auto other_player = BuildSyntheticGloveEconItemIdentity(xuid + 1, 5034);
+        const auto specialist = BuildDemoGloveEconItemIdentity(xuid, 5034);
+        const auto specialist_again = BuildDemoGloveEconItemIdentity(xuid, 5034);
+        const auto sport = BuildDemoGloveEconItemIdentity(xuid, 5030);
+        const auto other_player = BuildDemoGloveEconItemIdentity(xuid + 1, 5034);
         Expect(specialist.IsValid(), "synthetic glove identities must avoid invalid econ sentinels");
         Expect(
             specialist.high == (0xC5210000u | 5034u),
@@ -5294,7 +5302,7 @@ void TestGloveAppearanceModule()
             "synthetic glove identities must be stable for one player and definition");
         Expect(
             specialist.high != sport.high && specialist.low != sport.low,
-            "different glove definitions should not share a synthetic identity");
+            "different glove definitions should not share a demo identity");
         Expect(
             specialist.low != other_player.low,
             "different players should not share the synthetic glove low word");
