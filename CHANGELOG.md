@@ -1,5 +1,14 @@
 # Changelog / 更新记录
 
+## v0.6.3 — 2026-10-31 reissue / 重新定版
+
+- Synchronized the Temporary Demo knife entity, death-event identity and right-side HUD name with the selected knife definition and paint. Finish-only remains a live material hotpatch but now refreshes its client HUD identity; Model + Finish remains Temporary-Demo-only.
+- 同步临时 Demo 刀实体、刀杀事件与右侧 HUD 使用的刀型／涂装身份；仅饰面仍为当前 Demo 材质热修，但会刷新 HUD 客户端身份，模型＋饰面仍只走临时 Demo。
+- Added a permanent GitHub source-hygiene gate for tracked paths, contents and pushed commit messages. The current complete catalogs, default T/CT glove reconstruction, keychains, stickers and Workshop-map features are retained.
+- 新增永久 GitHub 源码卫生门禁，覆盖受跟踪路径、内容及推送提交消息；保留当前完整目录、默认 T／CT 手套重建、挂件、贴纸和工坊地图功能。
+
+See [bilingual release notes](docs/releases/v0.6.3.md) and [knife HUD diagnosis](docs/diagnostics/knife-hud-name-cache-20261031.md).
+
 ## v0.6.6 — 2026-10-30
 
 - Restored 22 missing glove finishes, including Occult (1417), using exact item/paint associations and VPK icons; removed numeric-ID classification. Added the missing supported Kukri menu entry and 12 finishes, plus inherited model metadata for 61 souvenir keychains.
