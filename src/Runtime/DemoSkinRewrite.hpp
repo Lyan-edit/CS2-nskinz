@@ -4,6 +4,8 @@
 
 #include <Windows.h>
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -37,6 +39,30 @@ struct DemoSkinRewritePlan
     std::wstring validation_issue;
 };
 
+struct DemoResolvedStickerSlot
+{
+    bool available = false;
+    bool source_preserved = false;
+    float wear = 0.0000001f;
+    float scale = 1.0f;
+    float rotation = 0.0f;
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    std::uint32_t schema = 0;
+};
+
+struct DemoResolvedStickerPlacement
+{
+    std::uint64_t xuid = 0;
+    int definition_index = 0;
+    std::uint32_t weapon_handle = 0;
+    int first_owned_tick = -1;
+    int last_owned_tick = -1;
+    int first_active_tick = -1;
+    int last_active_tick = -1;
+    std::array<DemoResolvedStickerSlot, 5> slots {};
+};
+
 struct DemoSkinRewriteResult
 {
     bool success = false;
@@ -44,6 +70,9 @@ struct DemoSkinRewriteResult
     std::filesystem::path output_demo;
     std::string playdemo_command;
     std::wstring detail;
+    // Final values parsed back from the generated Demo. These are the source
+    // of truth for previewing slots whose original placement was preserved.
+    std::vector<DemoResolvedStickerPlacement> resolved_sticker_placements;
 };
 
 // The injected runtime writes this small sidecar only when the current demo

@@ -262,6 +262,8 @@ void PrepareExternalRadarOverlay(
                 << L", soft_edge=" << overlay.softened_edge_pixels
                 << L", recovered_dark_detail=" << overlay.recovered_detail_pixels
                 << L", reference_mask=" << (overlay.used_map_reference_mask ? 1 : 0)
+                << L", reference_key=" << std::wstring(overlay.reference_key.begin(), overlay.reference_key.end())
+                << L", reference_source_changed=" << (overlay.reference_source_changed ? 1 : 0)
                 << L", black_tolerance=" << mask_settings.black_tolerance
                 << L", applied_black_tolerance=" << overlay.applied_black_tolerance
                 << L", neutral_mode=" << overlay.detected_neutral_mode

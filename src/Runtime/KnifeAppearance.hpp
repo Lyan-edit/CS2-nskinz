@@ -240,6 +240,15 @@ std::uint32_t BuildKnifeFinishEconItemHigh(
     std::uint64_t xuid,
     int target_definition_index,
     int paint_kit) noexcept;
+// Both finish-only and model+finish knife profiles use the same client-side
+// cosmetic identity.  The mode only controls model routing; it must never
+// decide whether the finish identity is written.
+std::uint32_t ResolveKnifeEconItemHigh(
+    bool has_explicit_paint_intent,
+    std::uint32_t source_item_id_high,
+    std::uint64_t xuid,
+    int target_definition_index,
+    int paint_kit) noexcept;
 std::uint64_t BuildKnifeProfileApplySignature(
     const KnifeAppearanceRequest& request,
     std::uint64_t xuid,

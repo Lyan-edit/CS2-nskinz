@@ -119,11 +119,15 @@ impl Observer for CosmeticInspector {
 
     fn on_entity(&mut self, ctx: &Context, event: EntityEvents, entity: &Entity) -> ObserverResult {
         let class = entity.class().name();
+        let has_econ_item = entity
+            .try_get_property("m_AttributeManager.m_Item.m_iItemDefinitionIndex")
+            .is_some();
         if class != "CCSPlayerPawn"
             && !class.contains("Wearable")
             && !class.contains("Glove")
             && !class.contains("Knife")
             && !class.contains("Weapon")
+            && !has_econ_item
         {
             return Ok(());
         }

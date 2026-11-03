@@ -156,7 +156,21 @@ void RunDemoSkinRewriteTests()
     Check(std::abs(sticker_transforms.at(0).at("offset_y").get<double>() + 0.225) < 0.000001,
         "custom sticker Y offset must be serialized");
     Check(sticker_transforms.at(0).at("schema") == 0,
-        "custom sticker placement must serialize schema zero");
+        "the first custom sticker must serialize authored home zero");
+    auto custom_slots_config = config;
+    for (auto& custom_slot : custom_slots_config.profiles[0].stickers)
+    {
+        custom_slot.kit_id = 76;
+        custom_slot.custom_position = true;
+    }
+    const auto custom_slots_plan = runtime::BuildDefaultDemoSkinRewritePlan(custom_slots_config);
+    const auto custom_slots_items = IndexItems(custom_slots_plan.passes.at(0));
+    const auto& custom_slots = custom_slots_items.at(7).at("sticker_transforms");
+    for (std::size_t slot = 0; slot < 5; ++slot)
+    {
+        Check(custom_slots.at(slot).at("schema") == (slot < 4 ? slot : 1),
+            "each custom AK slot must serialize its own authored home; only the fifth borrows home one");
+    }
     Check(std::abs(items.at(7).at("wear").get<double>() - 0.19) < 0.000001,
         "firearm wear must be serialized");
     Check(items.at(7).at("mesh_group_mask") == 2,

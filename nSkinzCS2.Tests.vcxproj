@@ -109,6 +109,7 @@
     <ClInclude Include="src\Runtime\KnifeNative.hpp" />
     <ClInclude Include="src\Runtime\KnifeLifecycle.hpp" />
     <ClInclude Include="src\Runtime\KnifeFinish.hpp" />
+    <ClInclude Include="src\Runtime\KnifeHudName.hpp" />
     <ClInclude Include="src\Runtime\KnifePair.hpp" />
     <ClInclude Include="src\Runtime\KnifeUpdateProbe.hpp" />
     <ClInclude Include="src\Runtime\KnifeAppearance.hpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="src\Runtime\WeaponMaterialInit.hpp" />
     <ClInclude Include="src\Runtime\MapRemap.hpp" />
     <ClInclude Include="src\Runtime\RadarAlphaFix.hpp" />
+    <ClInclude Include="src\Runtime\RadarReferenceCatalog.generated.hpp" />
     <ClInclude Include="src\Runtime\RadarNativeCompiler.hpp" />
     <ClInclude Include="src\Runtime\Shaders\RadarDecodePixel.generated.hpp" />
     <ClInclude Include="src\Runtime\Shaders\RadarDecodeVertex.generated.hpp" />

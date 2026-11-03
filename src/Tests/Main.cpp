@@ -14,6 +14,7 @@
 #include "Runtime/MapRemap.hpp"
 #include "Runtime/RadarAlphaFix.hpp"
 #include "Runtime/RadarNativeCompiler.hpp"
+#include "Runtime/RadarReferenceCatalog.generated.hpp"
 #include "Runtime/WeaponAppearance.hpp"
 #include "Runtime/WeaponMaterialInit.hpp"
 #include "Runtime/WorkshopMaps.hpp"
@@ -32,6 +33,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <set>
 
 void RunKnifeModelTests();
 void RunKnifeGraphTests();
@@ -46,6 +48,8 @@ bool g_knife_model_only = false;
 bool g_weapon_paint_only = false;
 bool g_cosmetic_rewrite_only = false;
 bool g_workshop_discovery_only = false;
+bool g_export_workshop_radars = false;
+bool g_radar_only = false;
 bool g_glove_refresh_only = false;
 
 void WriteRadarPreviewIfRequested(
@@ -108,6 +112,7 @@ void TestStickerPreviewNativePlacement()
     using nskinzcs2::ui::sticker_preview::MaterialToStoredOffset;
     using nskinzcs2::ui::sticker_preview::NativePreset;
     using nskinzcs2::ui::sticker_preview::OffsetToPreview;
+    using nskinzcs2::ui::sticker_preview::OffsetToPreviewOnProjectionSlot;
     using nskinzcs2::ui::sticker_preview::PreviewToOffset;
     using nskinzcs2::ui::sticker_preview::PreviewToEffectiveOffset;
     using nskinzcs2::ui::sticker_preview::SurfaceForSlot;
@@ -285,6 +290,18 @@ void TestStickerPreviewNativePlacement()
         std::fabs(ak_fifth_anchor.offset_x - 0.12881461f) <= 0.00001f &&
         std::fabs(ak_fifth_anchor.offset_y - 0.03781461f) <= 0.00001f,
         "legacy AK-47 slot five must serialize its measured borrowed anchor");
+    const auto ak_slot_two = NativePreset(7, 1, true);
+    const auto resolved_fifth_preview = OffsetToPreviewOnProjectionSlot(
+        7,
+        ak_fifth_anchor.schema,
+        ak_slot_two.offset_x + ak_fifth_anchor.offset_x,
+        ak_slot_two.offset_y + ak_fifth_anchor.offset_y,
+        true);
+    const auto configured_fifth_preview = EffectiveOffsetToPreview(
+        7, 4, true, ak_slot_five.offset_x, ak_slot_five.offset_y);
+    Expect(std::fabs(resolved_fifth_preview.x - configured_fifth_preview.x) <= 0.00001f &&
+        std::fabs(resolved_fifth_preview.y - configured_fifth_preview.y) <= 0.00001f,
+        "a Demo-resolved schema anchor must project onto the same surface as the configured slot");
 }
 
 void TestCatalogStoreRoundTrip()
@@ -1616,8 +1633,10 @@ void TestWorkshopMapDiscovery()
             adjustable_outcome == nskinzcs2::runtime::RadarAlphaFixOutcome::Generated,
             "nirage radar should support disabling dark-road recovery");
         Expect(
-            no_dark_bridge_overlay.virtual_path != overlay.virtual_path,
-            "changing radar recovery settings should publish a different cache-isolated resource alias");
+            overlay.used_map_reference_mask
+                ? no_dark_bridge_overlay.virtual_path == overlay.virtual_path
+                : no_dark_bridge_overlay.virtual_path != overlay.virtual_path,
+            "saved references stay fixed; only inferred radar recovery changes the resource alias");
         Expect(
             overlay.visible_pixels >= no_dark_bridge_overlay.visible_pixels,
             "dark-road recovery must never reduce retained map coverage");
@@ -1656,7 +1675,12 @@ void TestWorkshopMapDiscovery()
         }
         const auto cs2_install_root = steamapps / L"common/Counter-Strike Global Offensive";
         Expect(
-            nskinzcs2::runtime::CompileRadarOverlayWithCs2(cs2_install_root, overlay, diagnostic),
+            [&] {
+                const bool compiled = nskinzcs2::runtime::CompileRadarOverlayWithCs2(
+                    cs2_install_root, overlay, diagnostic);
+                if (!compiled) std::wcerr << L"native_radar_compile_failure=" << diagnostic << L'\n';
+                return compiled;
+            }(),
             "the masked radar PNG should compile through CS2's native resourcecompiler");
         Expect(overlay.vtex_bytes.size() >= 64, "the native compiled radar VTEX should not be empty");
         std::uint32_t compiled_block_count = 0;
@@ -1851,9 +1875,9 @@ void TestWorkshopMapDiscovery()
                        << L" neutral_mode_pixels=" << map_overlay.detected_neutral_mode_pixels
                        << L" visible=" << map_overlay.visible_pixels << L'\n';
             Expect(
-                map_overlay.applied_black_tolerance >= 26 &&
-                    map_overlay.applied_black_tolerance <= 32,
-                "Ancient Night should auto-detect its brighter opaque neutral grid");
+                map_overlay.used_map_reference_mask ||
+                    (map_overlay.applied_black_tolerance >= 26 && map_overlay.applied_black_tolerance <= 32),
+                "Ancient Night should load its saved reference or detect its brighter neutral grid");
             Expect(
                 map_overlay.visible_pixels >= 270000 && map_overlay.visible_pixels <= 285000,
                 "Ancient Night should retain its roads without retaining the opaque editor grid");
@@ -1881,11 +1905,15 @@ void TestWorkshopMapDiscovery()
                        << L" transparent=" << no_dark_recovery_overlay.transparent_pixels
                        << L'\n';
             Expect(
-                map_overlay.visible_pixels >= no_dark_recovery_overlay.visible_pixels + 5000,
-                "Inferno Water dark-road radius should visibly restore bounded road pixels");
+                map_overlay.used_map_reference_mask
+                    ? map_overlay.visible_pixels == no_dark_recovery_overlay.visible_pixels
+                    : map_overlay.visible_pixels >= no_dark_recovery_overlay.visible_pixels + 5000,
+                "the approved Inferno Water contour must not be expanded by dark-road recovery");
             Expect(
-                map_overlay.virtual_path != no_dark_recovery_overlay.virtual_path,
-                "changing Inferno Water recovery radius should change its cache-isolated alias");
+                map_overlay.used_map_reference_mask
+                    ? map_overlay.virtual_path == no_dark_recovery_overlay.virtual_path
+                    : map_overlay.virtual_path != no_dark_recovery_overlay.virtual_path,
+                "Inferno Water's fixed reference is independent of legacy recovery settings");
 
             nskinzcs2::runtime::RadarAlphaMaskSettings lower_tolerance;
             lower_tolerance.black_tolerance = 0;
@@ -1917,13 +1945,16 @@ void TestWorkshopMapDiscovery()
                 higher_tolerance_outcome == nskinzcs2::runtime::RadarAlphaFixOutcome::Generated,
                 "Inferno Water should support a stronger black-grid tolerance");
             Expect(
-                lower_tolerance_overlay.applied_black_tolerance <
-                    higher_tolerance_overlay.applied_black_tolerance &&
-                lower_tolerance_overlay.visible_pixels > higher_tolerance_overlay.visible_pixels + 1000,
-                "Inferno Water black tolerance slider should materially change retained pixels");
+                map_overlay.used_map_reference_mask
+                    ? lower_tolerance_overlay.png_bytes == higher_tolerance_overlay.png_bytes
+                    : (lower_tolerance_overlay.applied_black_tolerance < higher_tolerance_overlay.applied_black_tolerance &&
+                        lower_tolerance_overlay.visible_pixels > higher_tolerance_overlay.visible_pixels + 1000),
+                "the user-approved Inferno Water PNG cannot be replaced by tolerance changes");
             Expect(
-                lower_tolerance_overlay.virtual_path != higher_tolerance_overlay.virtual_path,
-                "changing Inferno Water tolerance should publish a new cache-isolated alias");
+                map_overlay.used_map_reference_mask
+                    ? lower_tolerance_overlay.virtual_path == higher_tolerance_overlay.virtual_path
+                    : lower_tolerance_overlay.virtual_path != higher_tolerance_overlay.virtual_path,
+                "the fixed Inferno Water standard must retain its alias at every tolerance");
             WriteRadarPreviewIfRequested(
                 "de_inferno_water-tolerance-0",
                 lower_tolerance_overlay);
@@ -1995,6 +2026,124 @@ void TestWorkshopMapDiscovery()
                    << L" applied_black_tolerance=" << map_overlay.applied_black_tolerance
                    << L" neutral_mode=" << map_overlay.detected_neutral_mode
                    << L" diagnostic=" << radar_diagnostic << L'\n';
+    }
+}
+
+void TestSavedRadarReferences()
+{
+    using namespace nskinzcs2::runtime;
+    for (const auto& reference : kAuditedRadarReferences)
+        Expect(FindResourceW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(reference.resource_id), RT_RCDATA) != nullptr,
+            "every saved radar PNG must be embedded in the delivered binary");
+    const auto maps = DiscoverSubscribedWorkshopMaps();
+    std::set<std::string> checked;
+    for (const auto& map : maps.entries)
+    {
+        std::wstring diagnostic;
+        const auto source = ReadWorkshopRadarTexture(map.workshop_id, map.map_name, 0, &diagnostic);
+        if (!source) continue;
+        std::uint64_t hash = 14695981039346656037ull;
+        for (const auto byte : source->bytes) { hash ^= byte; hash *= 1099511628211ull; }
+        const auto found = std::find_if(kAuditedRadarReferences.begin(), kAuditedRadarReferences.end(),
+            [&](const auto& reference) { return reference.virtual_path == source->virtual_path &&
+                reference.source_size == source->bytes.size() && reference.source_hash == hash; });
+        if (found == kAuditedRadarReferences.end() || !checked.insert(std::string(found->key)).second) continue;
+        RadarAlphaOverlay normal;
+        Expect(BuildRadarAlphaOverlayFromVtex(source->virtual_path, source->bytes, normal, diagnostic) == RadarAlphaFixOutcome::Generated,
+            "an installed saved radar version must load its embedded PNG");
+        Expect(normal.used_map_reference_mask && normal.reference_key == found->key && !normal.reference_source_changed,
+            "reference provenance must match the exact installed source version");
+        Expect(normal.width == found->width && normal.height == found->height &&
+            normal.visible_pixels == found->visible_pixels && normal.transparent_pixels == found->transparent_pixels,
+            "the saved contour and alpha coverage must be reproduced on every machine");
+        RadarAlphaMaskSettings extreme;
+        extreme.black_tolerance = 96;
+        extreme.dark_detail_radius = 64;
+        RadarAlphaOverlay repeated;
+        Expect(BuildRadarAlphaOverlayFromVtex(source->virtual_path, source->bytes, repeated, diagnostic, extreme) == RadarAlphaFixOutcome::Generated &&
+            repeated.png_bytes == normal.png_bytes && repeated.virtual_path == normal.virtual_path,
+            "heuristic controls cannot replace a reviewed radar standard");
+        auto updated = source->bytes;
+        updated[0] ^= 1; // Resource metadata changed, not texture payload.
+        RadarAlphaOverlay changed;
+        BuildRadarAlphaOverlayFromVtex(source->virtual_path, updated, changed, diagnostic);
+        Expect(changed.reference_source_changed, "a changed source version must be identified");
+        if (found->locked)
+        {
+            Expect(changed.used_map_reference_mask && changed.png_bytes == normal.png_bytes,
+                "the explicitly user-locked Inferno standard must never be regenerated automatically");
+            RadarAlphaOverlay other_map;
+            BuildRadarAlphaOverlayFromVtex("panorama/images/overheadmaps/unrecorded_map_radar_tga.vtex_c",
+                source->bytes, other_map, diagnostic);
+            Expect(!other_map.used_map_reference_mask, "a source fingerprint alone must not select another map's reference");
+            auto steamapps = map.item_directory;
+            for (int level = 0; level < 4; ++level) steamapps = steamapps.parent_path();
+            const auto game = steamapps / L"common/Counter-Strike Global Offensive";
+            Expect(CompileRadarOverlayWithCs2(game, normal, diagnostic), "the locked Inferno PNG must compile natively");
+            if (const auto* root = std::getenv("NSKINZ_RADAR_PREVIEW_DIR"))
+            {
+                std::ofstream native(std::filesystem::path(root) / "inferno-water-approved.vtex_c", std::ios::binary);
+                native.write(reinterpret_cast<const char*>(normal.vtex_bytes.data()), normal.vtex_bytes.size());
+            }
+            // ResourceCompiler can LZ4-pack RGBA mip storage. The runtime
+            // heuristic decoder intentionally rejects that storage; inspect
+            // its format here and verify pixels with the independent VRF
+            // decode in the recorded artifact audit, rather than weakening it.
+            bool lossless_format = false;
+            std::uint32_t table_relative = 0, blocks = 0;
+            std::memcpy(&table_relative, normal.vtex_bytes.data() + 8, 4);
+            std::memcpy(&blocks, normal.vtex_bytes.data() + 12, 4);
+            const std::size_t table = 8ull + table_relative;
+            for (std::size_t i = 0; i < blocks && i < 64; ++i)
+            {
+                const auto block = table + i * 12;
+                Expect(block + 12 <= normal.vtex_bytes.size(), "native radar block bounds");
+                std::uint32_t type = 0, relative = 0;
+                std::memcpy(&type, normal.vtex_bytes.data() + block, 4);
+                std::memcpy(&relative, normal.vtex_bytes.data() + block + 4, 4);
+                if (type != 0x41544144u) continue;
+                const auto data = block + 4 + relative;
+                Expect(data + 27 < normal.vtex_bytes.size(), "native radar DATA bounds");
+                lossless_format = normal.vtex_bytes[data + 26] == 4; // RGBA8888
+            }
+            Expect(lossless_format, "approved radar standards must use lossless RGBA rather than BC7 blocks");
+            WriteRadarPreviewIfRequested("inferno-water-approved", normal);
+        }
+        else Expect(!changed.used_map_reference_mask, "an updated unapproved source must not silently reuse a stale contour");
+        WriteRadarPreviewIfRequested(std::string(found->key), normal);
+    }
+    std::cout << "saved_radar_references_embedded=" << kAuditedRadarReferences.size()
+        << " installed_versions_verified=" << checked.size() << " locked_standard_preserved=1\n";
+}
+
+void ExportInstalledWorkshopRadars()
+{
+    const auto* directory = std::getenv("NSKINZ_RADAR_PREVIEW_DIR");
+    Expect(directory && *directory, "set NSKINZ_RADAR_PREVIEW_DIR to an audit output directory");
+    const auto root = std::filesystem::path(directory);
+    std::filesystem::create_directories(root);
+    std::ofstream manifest(root / "inventory.tsv");
+    manifest << "map\tworkshop\tvirtual_path\tfile\tsource_fnv1a64\tsource_size\twidth\theight\toutcome\n";
+    const auto maps = nskinzcs2::runtime::DiscoverSubscribedWorkshopMaps();
+    for (const auto& map : maps.entries)
+    {
+        std::wstring diagnostic;
+        const auto source = nskinzcs2::runtime::ReadWorkshopRadarTexture(map.workshop_id, map.map_name, 0, &diagnostic);
+        if (!source) { std::cout << "radar_inventory_missing=" << map.map_name << '\n'; continue; }
+        const auto name = map.workshop_id + "-" + map.map_name;
+        std::ofstream raw(root / (name + ".vtex_c"), std::ios::binary);
+        raw.write(reinterpret_cast<const char*>(source->bytes.data()), source->bytes.size());
+        std::uint64_t hash = 14695981039346656037ull;
+        for (const auto byte : source->bytes) { hash ^= byte; hash *= 1099511628211ull; }
+        nskinzcs2::runtime::RadarAlphaOverlay overlay;
+        const auto outcome = nskinzcs2::runtime::BuildRadarAlphaOverlayFromVtex(
+            source->virtual_path, source->bytes, overlay, diagnostic);
+        WriteRadarPreviewIfRequested(name, overlay);
+        manifest << map.map_name << '\t' << map.workshop_id << '\t' << source->virtual_path << '\t' << name
+            << '\t' << std::hex << hash << std::dec << '\t' << source->bytes.size() << '\t'
+            << overlay.width << '\t' << overlay.height << '\t' << static_cast<int>(outcome) << '\n';
+        std::cout << "radar_inventory=" << name << " outcome=" << static_cast<int>(outcome)
+            << " visible=" << overlay.visible_pixels << " transparent=" << overlay.transparent_pixels << '\n';
     }
 }
 
@@ -3934,6 +4083,7 @@ void TestKnifeAppearanceModule()
     using nskinzcs2::runtime::SelectDemoKnifeEconItemHigh;
     using nskinzcs2::runtime::IsDemoKnifeEconItemHighCompatible;
     using nskinzcs2::runtime::BuildKnifeFinishEconItemHigh;
+    using nskinzcs2::runtime::ResolveKnifeEconItemHigh;
 
     Expect(
         BuildDemoKnifeEconItemHigh(507) == 0xC52101FBu,
@@ -3958,6 +4108,13 @@ void TestKnifeAppearanceModule()
     Expect(
         BuildKnifeFinishEconItemHigh(76561198000000000ull, 507, 409) != 0x0000000Cu,
         "knife finish UI identity must detach from the source inventory item");
+    Expect(
+        ResolveKnifeEconItemHigh(true, 12u, 76561198000000000ull, 507, 568) ==
+            BuildKnifeFinishEconItemHigh(76561198000000000ull, 507, 568),
+        "finish-only paint intent must use the paint-specific HUD identity even without a model override");
+    Expect(
+        ResolveKnifeEconItemHigh(false, 12u, 76561198000000000ull, 507, 0) == 12u,
+        "a knife without explicit paint intent must preserve its source inventory identity");
     using nskinzcs2::runtime::ShouldApplyKnifeModelDefinitionOverride;
     using nskinzcs2::runtime::KnifeSlotMode;
 
@@ -6654,7 +6811,33 @@ void TestWeaponAppearanceModule()
             "custom sticker payload should carry Y offset");
         Expect(ContainsRefreshAttribute(payload.temporary_attributes, 290,
             std::bit_cast<float>(std::uint32_t {0})),
-            "custom sticker payload should carry schema zero");
+            "the first custom sticker payload should carry authored home zero");
+    }
+
+    // Explicit schema zero selects the first home; it is not a native-slot
+    // sentinel. Exercise all five live slots for both model families so the
+    // preview cannot use separate homes while the payload collapses onto zero.
+    for (const auto definition : {7, 9})
+    {
+        for (const bool legacy_model : {false, true})
+        {
+            nskinzcs2::model::CosmeticProfile profile;
+            profile.base_item = definition;
+            for (auto& sticker : profile.stickers)
+            {
+                sticker.kit_id = 76;
+                sticker.custom_position = true;
+            }
+            const auto payload = BuildWeaponAppearancePayload(profile, 123u, nullptr, legacy_model);
+            for (std::size_t slot = 0; slot < 5; ++slot)
+            {
+                const auto home = static_cast<std::uint32_t>(slot < 4 ? slot :
+                    definition == 9 && legacy_model ? 4 : 1);
+                Expect(ContainsRefreshAttribute(payload.temporary_attributes,
+                    static_cast<std::uint16_t>(290 + slot), std::bit_cast<float>(home)),
+                    "all five live sticker schemas must match the authored preview projection homes");
+            }
+        }
     }
 
     {
@@ -6953,6 +7136,9 @@ int RunAllTests()
         }
         if (g_weapon_paint_only)
         {
+            RunNamedTest("TestStickerPreviewNativePlacement", TestStickerPreviewNativePlacement);
+            RunNamedTest("TestKnifeAppearanceModule", TestKnifeAppearanceModule);
+            RunNamedTest("TestBuildWeaponRefreshAttributes", TestBuildWeaponRefreshAttributes);
             RunNamedTest("TestCatalogStoreRoundTrip", TestCatalogStoreRoundTrip);
             RunNamedTest("TestCatalogFromGameText", TestCatalogFromGameText);
             RunNamedTest("TestWeaponPaintCompatibility", TestWeaponPaintCompatibility);
@@ -6984,6 +7170,19 @@ int RunAllTests()
             std::cout << "workshop discovery failure regression passed (no CS2 process)\n";
             return EXIT_SUCCESS;
         }
+        if (g_export_workshop_radars)
+        {
+            ExportInstalledWorkshopRadars();
+            return EXIT_SUCCESS;
+        }
+        if (g_radar_only)
+        {
+            RunNamedTest("TestSavedRadarReferences", TestSavedRadarReferences);
+            RunNamedTest("TestWorkshopMapDiscovery", TestWorkshopMapDiscovery);
+            RunNamedTest("TestWorkshopMapDiscoveryFailureIsolation", TestWorkshopMapDiscoveryFailureIsolation);
+            std::cout << "radar regression passed (no CS2 process)\n";
+            return EXIT_SUCCESS;
+        }
         if (g_mesh_benchmark_only)
         {
             const auto result = nskinzcs2::runtime::ProbeWeaponMeshMaskForTests();
@@ -7010,6 +7209,7 @@ int RunAllTests()
         RunNamedTest("TestConfigRoundTrip", TestConfigRoundTrip);
         RunNamedTest("TestStickerPreviewNativePlacement", TestStickerPreviewNativePlacement);
         RunNamedTest("TestWorkshopMapDiscovery", TestWorkshopMapDiscovery);
+        RunNamedTest("TestSavedRadarReferences", TestSavedRadarReferences);
     RunNamedTest("TestWorkshopMapDiscoveryFailureIsolation", TestWorkshopMapDiscoveryFailureIsolation);
         RunNamedTest("TestCosmeticWearPolicy", TestCosmeticWearPolicy);
         RunNamedTest("TestProfileMatching", TestProfileMatching);
@@ -7099,6 +7299,14 @@ void ParseArguments(const int argc, wchar_t** argv)
         else if (argument == L"--workshop-discovery-only")
         {
             g_workshop_discovery_only = true;
+        }
+        else if (argument == L"--export-workshop-radars")
+        {
+            g_export_workshop_radars = true;
+        }
+        else if (argument == L"--radar-only")
+        {
+            g_radar_only = true;
         }
         else if (argument == L"--glove-refresh-only")
         {

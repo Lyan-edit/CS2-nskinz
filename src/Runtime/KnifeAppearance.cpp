@@ -466,6 +466,18 @@ std::uint32_t BuildKnifeFinishEconItemHigh(
     return 0xC5000000u | payload;
 }
 
+std::uint32_t ResolveKnifeEconItemHigh(
+    const bool has_explicit_paint_intent,
+    const std::uint32_t source_item_id_high,
+    const std::uint64_t xuid,
+    const int target_definition_index,
+    const int paint_kit) noexcept
+{
+    return has_explicit_paint_intent
+        ? BuildKnifeFinishEconItemHigh(xuid, target_definition_index, paint_kit)
+        : SelectDemoKnifeEconItemHigh(source_item_id_high, target_definition_index);
+}
+
 std::uint64_t BuildKnifeProfileApplySignature(
     const KnifeAppearanceRequest& request,
     const std::uint64_t xuid,

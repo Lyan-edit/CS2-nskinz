@@ -1,4 +1,5 @@
 #include "Runtime/RadarAlphaFix.hpp"
+#include "Runtime/RadarReferenceCatalog.generated.hpp"
 
 #include "Resources/ResourceIds.h"
 #include "Runtime/WorkshopMaps.hpp"
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -1294,7 +1296,8 @@ bool EncodePng(
 
 std::string BuildContentAddressedRadarVirtualPath(
     const std::string_view request_virtual_path,
-    const std::vector<std::uint8_t>& png)
+    const std::vector<std::uint8_t>& png,
+    const bool reference = false)
 {
     std::uint64_t hash = 14695981039346656037ull;
     const auto mix = [&hash](const std::uint8_t value)
@@ -1316,7 +1319,7 @@ std::string BuildContentAddressedRadarVirtualPath(
         hexadecimal.size(),
         "%016llx",
         static_cast<unsigned long long>(hash));
-    return "panorama/images/overheadmaps/nskinz_" + std::string(hexadecimal.data()) +
+    return std::string("panorama/images/overheadmaps/nskinz_") + (reference ? "ref_rgba_" : "") + std::string(hexadecimal.data()) +
         "_radar_tga.vtex_c";
 }
 
@@ -1341,6 +1344,70 @@ nskinzcs2::runtime::RadarAlphaFixOutcome nskinzcs2::runtime::BuildRadarAlphaOver
 {
     output = {};
     diagnostic.clear();
+    std::string normalized_path(virtual_path);
+    std::transform(normalized_path.begin(), normalized_path.end(), normalized_path.begin(),
+        [](unsigned char c) { return c == '\\' ? '/' : static_cast<char>(std::tolower(c)); });
+    std::uint64_t source_hash = 14695981039346656037ull;
+    for (const auto byte : source_vtex) { source_hash ^= byte; source_hash *= 1099511628211ull; }
+    const AuditedRadarReference* reference = nullptr;
+    const AuditedRadarReference* locked = nullptr;
+    bool known_path = false;
+    for (const auto& candidate : kAuditedRadarReferences)
+    {
+        if (candidate.virtual_path != normalized_path) continue;
+        known_path = true;
+        if (candidate.locked) locked = &candidate;
+        if (candidate.source_hash == source_hash && candidate.source_size == source_vtex.size())
+        {
+            reference = &candidate;
+            break;
+        }
+    }
+    output.reference_source_changed = known_path && reference == nullptr;
+    if (!reference) reference = locked;
+    if (reference)
+    {
+        output.reference_key = reference->key;
+        output.used_map_reference_mask = true;
+    }
+    // Reviewed resources are carried inside the DLL. No decoding heuristic,
+    // developer-side temporary file or GPU source decode can replace them.
+    // An explicitly user-locked standard also survives source metadata updates.
+    if (reference && !IsMirageWaterRadar(normalized_path))
+    {
+        std::vector<std::uint8_t> pixels;
+        if (!LoadEmbeddedRadarReference(reference->resource_id, output.width, output.height, pixels, diagnostic) ||
+            output.width != reference->width || output.height != reference->height ||
+            pixels.size() != static_cast<std::size_t>(output.width) * output.height * 4)
+        {
+            diagnostic = L"The embedded reviewed radar is unavailable or has unexpected dimensions.";
+            return RadarAlphaFixOutcome::Failed;
+        }
+        const auto background = static_cast<unsigned int>(std::clamp(settings.background_alpha_percent, 0, 100));
+        for (std::size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
+        {
+            auto& alpha = pixels[pixel * 4 + 3];
+            if (alpha == 0)
+            {
+                if (background)
+                {
+                    pixels[pixel * 4] = pixels[pixel * 4 + 1] = pixels[pixel * 4 + 2] = 0;
+                    alpha = static_cast<std::uint8_t>((255u * background + 50u) / 100u);
+                }
+                else ++output.transparent_pixels;
+            }
+            else
+            {
+                ++output.visible_pixels;
+                if (alpha != 255) ++output.softened_edge_pixels;
+            }
+        }
+        output.request_virtual_path = virtual_path;
+        if (!EncodePng(pixels, output.width, output.height, output.png_bytes, diagnostic))
+            return RadarAlphaFixOutcome::Failed;
+        output.virtual_path = BuildContentAddressedRadarVirtualPath(virtual_path, output.png_bytes, true);
+        return RadarAlphaFixOutcome::Generated;
+    }
     ParsedVtex texture;
     if (!ParseVtex(source_vtex, texture, diagnostic))
     {
@@ -1355,7 +1422,7 @@ nskinzcs2::runtime::RadarAlphaFixOutcome nskinzcs2::runtime::BuildRadarAlphaOver
     }
     const auto resolved_settings = ResolveRadarMaskSettings(virtual_path, settings);
     bool changed = false;
-    if (IsMirageWaterRadar(virtual_path))
+    if (reference && IsMirageWaterRadar(normalized_path))
     {
         output.used_map_reference_mask = true;
         output.applied_dark_detail_radius = 0;
@@ -1420,7 +1487,7 @@ nskinzcs2::runtime::RadarAlphaFixOutcome nskinzcs2::runtime::BuildRadarAlphaOver
         output = {};
         return RadarAlphaFixOutcome::Failed;
     }
-    output.virtual_path = BuildContentAddressedRadarVirtualPath(virtual_path, png);
+    output.virtual_path = BuildContentAddressedRadarVirtualPath(virtual_path, png, reference != nullptr);
     output.png_bytes = std::move(png);
     output.vtex_bytes.clear();
     diagnostic.clear();

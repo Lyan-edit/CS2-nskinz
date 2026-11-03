@@ -1,0 +1,409 @@
+{
+  "version": 1,
+  "references": [
+    {
+      "key": "de_all_in_one-8e4a93dc53a5150a",
+      "file": "de_all_in_one_8e4a93dc53a5150a.png",
+      "virtual_path": "panorama/images/overheadmaps/de_all_in_one_radar_tga.vtex_c",
+      "source_fnv1a64": "8e4a93dc53a5150a",
+      "source_sha256": "be4c74dc319d1d3d1b5a0f8d455e9b4410b52f42000949f5ef0943cbc30399fc",
+      "source_size": 1050708,
+      "workshop_ids": [
+        "3114174859"
+      ],
+      "map_names": [
+        "de_all_in_one"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 578896,
+      "visible_pixels": 469680,
+      "sha256": "ec49583fb10e4919fe0ab01361a9cc0ab23004526c784644cd641fdcdd06445f"
+    },
+    {
+      "key": "de_ancient_night-a369dc52fe2fdcbf",
+      "file": "de_ancient_night_a369dc52fe2fdcbf.png",
+      "virtual_path": "panorama/images/overheadmaps/de_ancient_night_radar_tga.vtex_c",
+      "source_fnv1a64": "a369dc52fe2fdcbf",
+      "source_sha256": "23f61ca9e0e21becb62ae10c3c9b6efbbc037fc7d16310e94d52664ffbf1ccaf",
+      "source_size": 1400228,
+      "workshop_ids": [
+        "3299281893"
+      ],
+      "map_names": [
+        "de_ancient_night"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 777606,
+      "visible_pixels": 270970,
+      "sha256": "6587c4869183dcf8f9eabb6d0df8233f6efeed979182d210aba4603978e2b995"
+    },
+    {
+      "key": "de_anubis_n-31f69f8b89975749",
+      "file": "de_anubis_n_31f69f8b89975749.png",
+      "virtual_path": "panorama/images/overheadmaps/de_anubis_n_radar_tga.vtex_c",
+      "source_fnv1a64": "31f69f8b89975749",
+      "source_sha256": "7e264112a431549ebaa51898a783ae539dac1e41680f017a00d6325accb639dd",
+      "source_size": 520580,
+      "workshop_ids": [
+        "3558688961"
+      ],
+      "map_names": [
+        "de_anubis_n"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 720,
+      "height": 720,
+      "transparent_pixels": 356216,
+      "visible_pixels": 162184,
+      "sha256": "26d37e7e4e288b607e7effd1ab62256a9a8af5daa491cab0df87905354935636"
+    },
+    {
+      "key": "de_cache_d-67e417b5256598bd",
+      "file": "de_cache_d_67e417b5256598bd.png",
+      "virtual_path": "panorama/images/overheadmaps/de_cache_d_radar_tga.vtex_c",
+      "source_fnv1a64": "67e417b5256598bd",
+      "source_sha256": "779947e0e5fb165d6d23bc1aecef293e1b3ba3d57269515e5ef58f540173ff77",
+      "source_size": 520580,
+      "workshop_ids": [
+        "3718007087"
+      ],
+      "map_names": [
+        "de_cache_d"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 720,
+      "height": 720,
+      "transparent_pixels": 295191,
+      "visible_pixels": 223209,
+      "sha256": "7dfd4069dee7db008f1d20086b82515d9c316780a8806662e54c7edfec2a2c28"
+    },
+    {
+      "key": "de_cache_n_r-873b10d498d4cfe4",
+      "file": "de_cache_n_r_873b10d498d4cfe4.png",
+      "virtual_path": "panorama/images/overheadmaps/de_cache_n_r_radar_tga.vtex_c",
+      "source_fnv1a64": "873b10d498d4cfe4",
+      "source_sha256": "ce4260e4ee2d453539c8264386c7c0c77ab96839c2139da5e00a2751cf0821ad",
+      "source_size": 1050676,
+      "workshop_ids": [
+        "3761910816"
+      ],
+      "map_names": [
+        "de_cache_n_r"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 652173,
+      "visible_pixels": 396403,
+      "sha256": "38253dd50ab2c8fbd0fd2912dc128f6e8f77f726cb9a59fb31e7ce761653beee"
+    },
+    {
+      "key": "de_cache-bc788cf17ac1d4cc",
+      "file": "de_cache_bc788cf17ac1d4cc.png",
+      "virtual_path": "panorama/images/overheadmaps/de_cache_radar_tga.vtex_c",
+      "source_fnv1a64": "bc788cf17ac1d4cc",
+      "source_sha256": "002dea08ee0ac748cb0457f8f9af3a46f76c0e5816558b9c48f221c361d6542e",
+      "source_size": 22371736,
+      "workshop_ids": [
+        "3437809122",
+        "3460740703"
+      ],
+      "map_names": [
+        "de_cache"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 2048,
+      "height": 2048,
+      "transparent_pixels": 2727203,
+      "visible_pixels": 1467101,
+      "sha256": "542d5fa903de2c8187af4cebaf58d7551ad803fd981d72449cddd208ac191233"
+    },
+    {
+      "key": "de_dust2_water-59dc8ede4378cf58",
+      "file": "de_dust2_water_59dc8ede4378cf58.png",
+      "virtual_path": "panorama/images/overheadmaps/de_dust2_water_radar_tga.vtex_c",
+      "source_fnv1a64": "59dc8ede4378cf58",
+      "source_sha256": "418827db96b91e6410effbf6e66253751a152c6f541656a183a083441adeefb0",
+      "source_size": 520532,
+      "workshop_ids": [
+        "3270882809"
+      ],
+      "map_names": [
+        "de_dust2_water"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 720,
+      "height": 720,
+      "transparent_pixels": 289283,
+      "visible_pixels": 229117,
+      "sha256": "7f61860719c7fc6d53650b8497ee343a585cb3f5955ae7e583d624dc8b7f31a5"
+    },
+    {
+      "key": "de_dust_2_rainy-12fd9b8f688dd17f",
+      "file": "de_dust_2_rainy_12fd9b8f688dd17f.png",
+      "virtual_path": "panorama/images/overheadmaps/de_dust_2_rainy_radar_tga.vtex_c",
+      "source_fnv1a64": "12fd9b8f688dd17f",
+      "source_sha256": "3f82dfd68919808fc7ff83a78572acea75b9cc344b93bca4f0e4f7c72bef1bf9",
+      "source_size": 443076,
+      "workshop_ids": [
+        "3415606747"
+      ],
+      "map_names": [
+        "de_dust_2_rainy"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 664,
+      "height": 664,
+      "transparent_pixels": 249173,
+      "visible_pixels": 191723,
+      "sha256": "ef20af28c257e1757cda4b586e49a32dc7bf04b10e4712b87acfb01af27315c3"
+    },
+    {
+      "key": "de_inferno_d-72eb930eefb41c3",
+      "file": "de_inferno_d_72eb930eefb41c3.png",
+      "virtual_path": "panorama/images/overheadmaps/de_inferno_d_radar_tga.vtex_c",
+      "source_fnv1a64": "72eb930eefb41c3",
+      "source_sha256": "9143d02b208b4ce9a0533d2bec7c5a9488bfc5b2c002c5a71e78d451c864aded",
+      "source_size": 1050692,
+      "workshop_ids": [
+        "3802103572"
+      ],
+      "map_names": [
+        "de_inferno_d"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 735364,
+      "visible_pixels": 313212,
+      "sha256": "dcb5843f7cc38febf57611c3f6233775f58968ad5f5cc3b93d09291d7fd3add0"
+    },
+    {
+      "key": "de_inferno_rain-9386dbf29a9048f6",
+      "file": "de_inferno_rain_9386dbf29a9048f6.png",
+      "virtual_path": "panorama/images/overheadmaps/de_inferno_rain_radar_tga.vtex_c",
+      "source_fnv1a64": "9386dbf29a9048f6",
+      "source_sha256": "f2040d67e066a7c2ef015c4bed8a378483f7b48e59ebfcab8de255dfcca16b1f",
+      "source_size": 178599,
+      "workshop_ids": [
+        "3488478228"
+      ],
+      "map_names": [
+        "de_inferno_rain"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 732907,
+      "visible_pixels": 315669,
+      "sha256": "d5e1203708a4c5826c4f62ad623fe8957bfb29f7e4cf00e7c7de09eda9523e68"
+    },
+    {
+      "key": "de_inferno_water-7a679a6781ea5bdd",
+      "locked": true,
+      "approval": "User-selected fixed standard on 2026-11-03; do not replace without explicit authorization.",
+      "file": "de_inferno_water_7a679a6781ea5bdd.png",
+      "virtual_path": "panorama/images/overheadmaps/de_inferno_water_radar_tga.vtex_c",
+      "source_fnv1a64": "7a679a6781ea5bdd",
+      "source_sha256": "3819a4866ec81406655950e9415dd7c2de633b69321b3f1e918ea673a542299f",
+      "source_size": 520532,
+      "workshop_ids": [
+        "3318429218"
+      ],
+      "map_names": [
+        "de_inferno_water"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 720,
+      "height": 720,
+      "transparent_pixels": 361804,
+      "visible_pixels": 156596,
+      "sha256": "7efdf576940999d6d9c1453f50081c4ced02b7b478255f0a49c804227371b2a7"
+    },
+    {
+      "key": "de_minecraft_cache_new-c61ae96d34482327",
+      "file": "de_minecraft_cache_new_c61ae96d34482327.png",
+      "virtual_path": "panorama/images/overheadmaps/de_minecraft_cache_new_radar_tga.vtex_c",
+      "source_fnv1a64": "c61ae96d34482327",
+      "source_sha256": "e93bd17d80f728c31d5ad4f82e44c0f49f42ffc6f570ea80d5c02fdfb1d9849d",
+      "source_size": 4196420,
+      "workshop_ids": [
+        "3783280189"
+      ],
+      "map_names": [
+        "de_minecraft_cache_new"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 695065,
+      "visible_pixels": 353511,
+      "sha256": "cf759341f4418d0733490220b2e1bd24fdb9d31d964b5e5bc2ff672e6456f708"
+    },
+    {
+      "key": "de_minecraft_dust2-b247b73339b22702",
+      "file": "de_minecraft_dust2_b247b73339b22702.png",
+      "virtual_path": "panorama/images/overheadmaps/de_minecraft_dust2_radar_tga.vtex_c",
+      "source_fnv1a64": "b247b73339b22702",
+      "source_sha256": "caa1c684d4b1fb6a48421241ee067eecaa9f514ef0076252c79f3e65e66c9a00",
+      "source_size": 4196420,
+      "workshop_ids": [
+        "3664545885"
+      ],
+      "map_names": [
+        "de_minecraft_dust2",
+        "signdustct_prefab",
+        "signdustt_prefab"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 528440,
+      "visible_pixels": 520136,
+      "sha256": "ce8fd0b5f3b23b598f4ab7b1881d040956aeb71be49dd44c0254b2af94926b60"
+    },
+    {
+      "key": "de_mirage_rain-616f8729a1db16ef",
+      "file": "de_mirage_rain_616f8729a1db16ef.png",
+      "virtual_path": "panorama/images/overheadmaps/de_mirage_rain_radar_tga.vtex_c",
+      "source_fnv1a64": "616f8729a1db16ef",
+      "source_sha256": "3b0bd79e473b4d803a1529e2f60ea1d344407571924448c02b5c5c836b2b69f2",
+      "source_size": 1050708,
+      "workshop_ids": [
+        "3415616810"
+      ],
+      "map_names": [
+        "de_mirage_rain"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 612577,
+      "visible_pixels": 435999,
+      "sha256": "82e4f31032b58dc31f589df16675d107f09f14935e3c62447fb2c24526953a5e"
+    },
+    {
+      "key": "de_mirage_water-ffbe6c293c358fe9",
+      "file": "de_mirage_water_ffbe6c293c358fe9.png",
+      "virtual_path": "panorama/images/overheadmaps/de_mirage_water_radar_tga.vtex_c",
+      "source_fnv1a64": "ffbe6c293c358fe9",
+      "source_sha256": "bb209179510e37d05d493c31d08f91e01e7a6d7fa0e009d493c76fb59d9db512",
+      "source_size": 520532,
+      "workshop_ids": [
+        "3252689713"
+      ],
+      "map_names": [
+        "de_mirage_water"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 720,
+      "height": 720,
+      "transparent_pixels": 298510,
+      "visible_pixels": 219890,
+      "sha256": "83d4c7b010fb9ebfec89a33dc9e0f8cc3aa596170c9dc77dc6f1ee59ecfa0788"
+    },
+    {
+      "key": "de_nache-54fb5cbceb34ce9c",
+      "file": "de_nache_54fb5cbceb34ce9c.png",
+      "virtual_path": "panorama/images/overheadmaps/de_nache_radar_tga.vtex_c",
+      "source_fnv1a64": "54fb5cbceb34ce9c",
+      "source_sha256": "479dd9ef3208351ad0119162fbc16ce4fd7f0a421cf6c5c705aa6f2092cbcedd",
+      "source_size": 1050676,
+      "workshop_ids": [
+        "3113178445"
+      ],
+      "map_names": [
+        "de_nache"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 1024,
+      "height": 1024,
+      "transparent_pixels": 669906,
+      "visible_pixels": 378670,
+      "sha256": "a173ed769f75dbbeee3b0ac7b6ecc9d8455a84019bbd0eba99a9a0bc8e8b9644"
+    },
+    {
+      "key": "de_nuke_rainy-9ae6e9b2ca4eacf6",
+      "file": "de_nuke_rainy_9ae6e9b2ca4eacf6.png",
+      "virtual_path": "panorama/images/overheadmaps/de_nuke_rainy_radar_tga.vtex_c",
+      "source_fnv1a64": "9ae6e9b2ca4eacf6",
+      "source_sha256": "7149207f770d22a695f0f9c3a36e0a72e0fd9f9347c836d31f8325ac6ac11908",
+      "source_size": 443076,
+      "workshop_ids": [
+        "3430864549"
+      ],
+      "map_names": [
+        "de_nuke_rainy"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 664,
+      "height": 664,
+      "transparent_pixels": 362342,
+      "visible_pixels": 78554,
+      "sha256": "f59bea9ebb1df0e2b2f68b099e0b2daa70049faa5e6104d5a70c4b32c0246698"
+    },
+    {
+      "key": "de_vertigo_rain-53f983822e5ca023",
+      "file": "de_vertigo_rain_53f983822e5ca023.png",
+      "virtual_path": "panorama/images/overheadmaps/de_vertigo_rain_radar_tga.vtex_c",
+      "source_fnv1a64": "53f983822e5ca023",
+      "source_sha256": "3c2493f693bba56223c5710058e435fec31b41985a5c72d9db966dcd18a8930e",
+      "source_size": 591124,
+      "workshop_ids": [
+        "3424680228"
+      ],
+      "map_names": [
+        "de_vertigo_rain"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 664,
+      "height": 664,
+      "transparent_pixels": 250122,
+      "visible_pixels": 190774,
+      "sha256": "bc485ce32beec7c8f58825e2d3dfcfb80a482bf213c95065f6d866a775c6ca67"
+    },
+    {
+      "key": "nirage-b7cf67cbe140311e",
+      "file": "nirage_b7cf67cbe140311e.png",
+      "virtual_path": "panorama/images/overheadmaps/nirage_radar_tga.vtex_c",
+      "source_fnv1a64": "b7cf67cbe140311e",
+      "source_sha256": "2148c758bbf9ee8d5e117da0cc353f383f60e19cfb7aad03badfa8f3c7378e19",
+      "source_size": 442996,
+      "workshop_ids": [
+        "3573314592"
+      ],
+      "map_names": [
+        "nirage"
+      ],
+      "review": "source-outline-and-transparent-composite",
+      "reviewed_on": "2026-11-03",
+      "width": 664,
+      "height": 664,
+      "transparent_pixels": 334292,
+      "visible_pixels": 106604,
+      "sha256": "0202590f04cc280ac0c0ee77a1d7f0a113031a5817ba2e66a74455aaf5f889f2"
+    }
+  ]
+}

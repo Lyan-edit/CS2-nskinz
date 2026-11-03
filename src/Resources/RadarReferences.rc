@@ -1,3 +1,4 @@
 #include "ResourceIds.h"
 
 IDR_NSKINZ_RADAR_REFERENCE_MIRAGE_WATER RCDATA "../../assets/radar_references/de_mirage_water_alpha_reference.png"
+#include "RadarReferenceCatalog.generated.rc2"

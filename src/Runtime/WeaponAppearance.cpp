@@ -263,11 +263,12 @@ nskinzcs2::runtime::WeaponAppearancePayload nskinzcs2::runtime::BuildWeaponAppea
                     legacy_model,
                     nskinzcs2::model::NormalizeStickerOffset(sticker.offset_y)));
             // items_game marks schema as stored_as_integer. It selects the
-            // authored material home used by this logical slot; schema zero
-            // means this slot's own home.
+            // authored material home used by this logical slot. Explicit zero
+            // selects the first home, so every native slot needs its own index.
             payload.temporary_attributes.emplace_back(
                 static_cast<std::uint16_t>(kAttributeStickerSchemaBase + slot),
-                std::bit_cast<float>(placement.schema));
+                std::bit_cast<float>(nskinzcs2::model::ResolveSerializedStickerSchema(
+                    profile.base_item, slot, legacy_model)));
         }
     }
 

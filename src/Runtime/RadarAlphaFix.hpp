@@ -63,6 +63,9 @@ struct RadarAlphaOverlay
     // matte detection. The reference is embedded in the binary, so the same
     // mask is used on every machine and does not depend on a local file.
     bool used_map_reference_mask = false;
+    // Human-readable identity of the embedded, reviewed PNG actually loaded.
+    std::string reference_key;
+    bool reference_source_changed = false;
 };
 
 RadarAlphaFixOutcome BuildWorkshopRadarAlphaOverlay(

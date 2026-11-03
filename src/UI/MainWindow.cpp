@@ -26,11 +26,13 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <future>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -82,6 +84,16 @@ constexpr UINT kAutomatedRuntimeRefreshMessage = WM_APP + 0x153;
 const char* Ui(const UiTextId id) noexcept
 {
     return nskinzcs2::ui::Text(id);
+}
+
+void DrawFieldHelp(const UiTextId id)
+{
+    if (!ImGui::IsItemHovered()) return;
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+    ImGui::TextUnformatted(Ui(id));
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
 }
 
 const char* YesNoText(const bool value) noexcept
@@ -909,8 +921,13 @@ bool InputSearchText(const char* label, const char* hint, std::string& value)
     return changed;
 }
 
+const char* QualityOptionDisplayName(const NamedId& value)
+{
+    return nskinzcs2::ui::QualityDisplayName(value.id, value.name.c_str());
+}
+
 bool ComboById(const char* label, const std::vector<NamedId>& values, int& id, const int popup_count = 10,
-    const char* preview_override = nullptr)
+    const char* preview_override = nullptr, const char* (*display_name)(const NamedId&) = nullptr)
 {
     if (values.empty())
     {
@@ -918,6 +935,10 @@ bool ComboById(const char* label, const std::vector<NamedId>& values, int& id, c
     }
 
     int current_index = FindIndexById(values, id);
+    const auto name_for = [&](int index)
+    {
+        return display_name ? display_name(values[index]) : values[index].name.c_str();
+    };
     bool changed = false;
     static std::unordered_map<ImGuiID, std::string> filters;
     const ImGuiID combo_id = ImGui::GetID(label);
@@ -929,7 +950,7 @@ bool ComboById(const char* label, const std::vector<NamedId>& values, int& id, c
             ImVec2(FLT_MAX, ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(popup_count + 2)));
     }
 
-    if (ImGui::BeginCombo(label, preview_override != nullptr ? preview_override : values[current_index].name.c_str()))
+    if (ImGui::BeginCombo(label, preview_override != nullptr ? preview_override : name_for(current_index)))
     {
         auto& filter = filters[combo_id];
         ImGui::PushID(static_cast<int>(combo_id));
@@ -949,7 +970,8 @@ bool ComboById(const char* label, const std::vector<NamedId>& values, int& id, c
         visible_indices.reserve(values.size());
         for (int index = 0; index < count; ++index)
         {
-            if (ContainsCaseInsensitive(values[index].name, filter))
+            if (ContainsCaseInsensitive(name_for(index), filter) ||
+                (display_name && ContainsCaseInsensitive(values[index].name, filter)))
             {
                 visible_indices.push_back(index);
             }
@@ -970,7 +992,7 @@ bool ComboById(const char* label, const std::vector<NamedId>& values, int& id, c
                     const int index = visible_indices[visible];
                     const bool selected = values[index].id == id;
                     ImGui::PushID(values[index].id);
-                    if (ImGui::Selectable(values[index].name.c_str(), selected))
+                    if (ImGui::Selectable(name_for(index), selected))
                     {
                         current_index = index;
                         id = values[index].id;
@@ -1721,8 +1743,10 @@ private:
                     DrawStickersEditor(
                         catalog,
                         profile.stickers,
+                        profile.xuid,
                         profile.base_item,
                         profile.paint_kit,
+                        status.demo_tick,
                         "weapon_stickers",
                         selected_weapon_sticker_);
                 }
@@ -1942,6 +1966,7 @@ private:
             profile.name = name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ConfigNameHelp);
 
         if (ComboById(Ui(UiTextId::Item), cached_visible_weapon_items_, profile.base_item, 8))
         {
@@ -2020,10 +2045,11 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::WeaponPaintIncompatible));
         }
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8))
+        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
         {
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ItemQualityHelp);
 
         char custom_name_buffer[64] {};
         CopyToBuffer(profile.custom_name, custom_name_buffer, sizeof(custom_name_buffer));
@@ -2036,6 +2062,7 @@ private:
             profile.custom_name = custom_name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::NameTagHelp);
     }
 
     void DrawKnifeProfileList()
@@ -2081,6 +2108,7 @@ private:
             profile.name = name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ConfigNameHelp);
 
         if (ImGui::Checkbox(Ui(UiTextId::Enabled), &profile.enabled))
         {
@@ -2157,10 +2185,11 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::WeaponPaintIncompatible));
         }
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8))
+        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
         {
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ItemQualityHelp);
 
         if (ImGui::InputInt(Ui(UiTextId::Seed), &profile.seed))
         {
@@ -2189,6 +2218,7 @@ private:
             profile.custom_name = custom_name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::NameTagHelp);
 
         const bool model_and_finish_requested = profile.mode == KnifeProfileMode::ModelAndFinish;
         const bool missing_model_definition = model_and_finish_requested && profile.model_definition == 0;
@@ -2251,6 +2281,7 @@ private:
             profile.name = name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ConfigNameHelp);
 
         if (ImGui::Checkbox(Ui(UiTextId::Enabled), &profile.enabled))
         {
@@ -2331,10 +2362,11 @@ private:
             PushWorkingConfig();
         }
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8))
+        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
         {
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::GloveQualityHelp);
 
         if (ImGui::InputInt(Ui(UiTextId::Seed), &profile.seed))
         {
@@ -2363,6 +2395,7 @@ private:
             profile.custom_name = custom_name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::NameTagHelp);
 
         if (profile.mode == GloveProfileMode::FinishOnly)
         {
@@ -2464,6 +2497,7 @@ private:
             profile.name = name_buffer;
             PushWorkingConfig();
         }
+        DrawFieldHelp(UiTextId::ConfigNameHelp);
 
         if (ImGui::Checkbox(Ui(UiTextId::Enabled), &profile.enabled))
         {
@@ -2656,6 +2690,9 @@ private:
         ImGui::TextWrapped("%s", Ui(UiTextId::MapUseSourceRadarHelp));
         if (profile.use_source_radar)
         {
+            const bool saved_reference = profile.target_map_name == "de_inferno_water" ||
+                profile.radar_overlay_virtual_path.starts_with("panorama/images/overheadmaps/nskinz_ref_");
+            if (saved_reference) ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarReferenceLocked));
             bool radar_settings_released = false;
             const auto invalidate_prepared_radar = [&]()
             {
@@ -2665,6 +2702,7 @@ private:
                 profile.radar_overlay_file_path.clear();
                 PushWorkingConfig();
             };
+            ImGui::BeginDisabled(saved_reference);
             if (ImGui::SliderInt(
                     Ui(UiTextId::MapRadarBlackTolerance),
                     &profile.radar_black_tolerance,
@@ -2687,6 +2725,7 @@ private:
             }
             radar_settings_released |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarDarkDetailRadiusHelp));
+            ImGui::EndDisabled();
             if (ImGui::SliderInt(
                     Ui(UiTextId::MapRadarBackgroundAlpha),
                     &profile.radar_background_alpha_percent,
@@ -2856,6 +2895,10 @@ private:
         demo_skin_last_observed_path_ = *observed;
         if (!nskinzcs2::runtime::IsGeneratedDemoSkinPath(*observed))
         {
+            if (*observed != demo_skin_source_path_)
+            {
+                demo_skin_rewrite_result_.resolved_sticker_placements.clear();
+            }
             demo_skin_source_path_ = *observed;
             Logger::Info(L"Temporary demo UI captured original source: " + observed->wstring() + L".");
         }
@@ -2877,7 +2920,12 @@ private:
                 source_buffer,
                 sizeof(source_buffer)))
         {
-            demo_skin_source_path_ = std::filesystem::path(Wide(source_buffer));
+            const auto edited_source = std::filesystem::path(Wide(source_buffer));
+            if (edited_source != demo_skin_source_path_)
+            {
+                demo_skin_rewrite_result_.resolved_sticker_placements.clear();
+            }
+            demo_skin_source_path_ = edited_source;
         }
         if (demo_skin_source_path_.empty())
         {
@@ -2999,7 +3047,8 @@ private:
         int& selected_sticker,
         const int weapon_definition,
         const bool legacy_model,
-        const std::string& weapon_name)
+        const std::string& weapon_name,
+        const nskinzcs2::runtime::DemoResolvedStickerPlacement* resolved_placement)
     {
         selected_sticker = std::clamp(selected_sticker, 0, 4);
         ImGui::TextUnformatted(Ui(UiTextId::StickerPlacementPreview));
@@ -3021,14 +3070,19 @@ private:
         std::array<ImVec2, 5> marker_centers {};
         std::array<ImVec2, 5> effective_offsets {};
         std::array<ImVec2, 5> stored_offsets {};
-        const auto offset_to_canvas = [&](const std::size_t slot, const ImVec2 offset)
+        std::array<std::size_t, 5> projection_slots {};
+        std::array<float, 5> preview_wears {};
+        std::array<float, 5> preview_scales {};
+        std::array<float, 5> preview_rotations {};
+        std::array<float, 5> preview_authored_scales {};
+        const auto offset_to_canvas = [&](const std::size_t projection_slot, const ImVec2 offset)
         {
-            const auto point = nskinzcs2::ui::sticker_preview::EffectiveOffsetToPreview(
+            const auto point = nskinzcs2::ui::sticker_preview::OffsetToPreviewOnProjectionSlot(
                 weapon_definition,
-                slot,
-                legacy_model,
+                projection_slot,
                 offset.x,
-                offset.y);
+                offset.y,
+                legacy_model);
             return ImVec2(
                 preview_bounds.minimum.x + point.x * preview_width,
                 preview_bounds.minimum.y + point.y * preview_height);
@@ -3039,9 +3093,34 @@ private:
             {
                 const auto preset = nskinzcs2::ui::sticker_preview::EffectivePreset(
                     weapon_definition, slot, legacy_model);
+                const auto preset_projection = nskinzcs2::model::ResolveStickerProjectionSlot(
+                    weapon_definition, slot, legacy_model);
                 preset_centers[slot] = offset_to_canvas(
-                    slot, ImVec2(preset.offset_x, preset.offset_y));
+                    preset_projection, ImVec2(preset.offset_x, preset.offset_y));
                 const auto& sticker = stickers[slot];
+                const auto* resolved = resolved_placement != nullptr &&
+                        resolved_placement->slots[slot].available &&
+                        !sticker.custom_position
+                    ? &resolved_placement->slots[slot]
+                    : nullptr;
+                if (resolved != nullptr)
+                {
+                    projection_slots[slot] = static_cast<std::size_t>(resolved->schema);
+                    const auto anchor = nskinzcs2::ui::sticker_preview::NativePreset(
+                        weapon_definition, projection_slots[slot], legacy_model);
+                    effective_offsets[slot] = ImVec2(
+                        anchor.offset_x + resolved->offset_x,
+                        anchor.offset_y + resolved->offset_y);
+                    stored_offsets[slot] = ImVec2(resolved->offset_x, resolved->offset_y);
+                    preview_wears[slot] = resolved->wear;
+                    preview_scales[slot] = resolved->scale;
+                    preview_rotations[slot] = resolved->rotation;
+                    preview_authored_scales[slot] = anchor.authored_scale;
+                    marker_centers[slot] = offset_to_canvas(
+                        projection_slots[slot], effective_offsets[slot]);
+                    continue;
+                }
+                projection_slots[slot] = preset_projection;
                 const auto default_stored =
                     nskinzcs2::ui::sticker_preview::DefaultStoredOffset(
                         weapon_definition,
@@ -3060,7 +3139,12 @@ private:
                         stored_offsets[slot].y,
                         legacy_model);
                 effective_offsets[slot] = ImVec2(effective.x, effective.y);
-                marker_centers[slot] = offset_to_canvas(slot, effective_offsets[slot]);
+                preview_wears[slot] = sticker.wear;
+                preview_scales[slot] = sticker.scale;
+                preview_rotations[slot] = sticker.rotation;
+                preview_authored_scales[slot] = preset.authored_scale;
+                marker_centers[slot] = offset_to_canvas(
+                    projection_slots[slot], effective_offsets[slot]);
             }
         };
         update_centers();
@@ -3099,20 +3183,26 @@ private:
             const auto normalized_mouse_x = (mouse.x - preview_bounds.minimum.x) / preview_width;
             const auto normalized_mouse_y = (mouse.y - preview_bounds.minimum.y) / preview_height;
             const auto current_effective = effective_offsets[static_cast<std::size_t>(selected_sticker)];
-            const nskinzcs2::ui::sticker_preview::PreviewPoint inverse_hint {
-                current_effective.x,
-                current_effective.y,
-            };
+            const auto selected_slot = static_cast<std::size_t>(selected_sticker);
+            const auto target_base = nskinzcs2::ui::sticker_preview::MaterialBaseOffset(
+                weapon_definition, selected_slot, legacy_model);
+            const nskinzcs2::ui::sticker_preview::PreviewPoint inverse_hint =
+                sticker.custom_position
+                    ? nskinzcs2::ui::sticker_preview::PreviewPoint {
+                        current_effective.x,
+                        current_effective.y,
+                    }
+                    : target_base;
             const auto material_offset = nskinzcs2::ui::sticker_preview::PreviewToEffectiveOffset(
                 weapon_definition,
-                static_cast<std::size_t>(selected_sticker),
+                selected_slot,
                 legacy_model,
                 normalized_mouse_x,
                 normalized_mouse_y,
                 &inverse_hint);
             const auto offset = nskinzcs2::ui::sticker_preview::MaterialToStoredOffset(
                 weapon_definition,
-                static_cast<std::size_t>(selected_sticker),
+                selected_slot,
                 material_offset.x,
                 material_offset.y,
                 legacy_model);
@@ -3124,6 +3214,12 @@ private:
                 std::fabs(sticker.offset_x - new_x) > 0.00001f ||
                 std::fabs(sticker.offset_y - new_y) > 0.00001f)
             {
+                if (!sticker.custom_position)
+                {
+                    sticker.wear = preview_wears[selected_slot];
+                    sticker.scale = preview_scales[selected_slot];
+                    sticker.rotation = preview_rotations[selected_slot];
+                }
                 sticker.custom_position = true;
                 sticker.offset_x = new_x;
                 sticker.offset_y = new_y;
@@ -3208,17 +3304,15 @@ private:
             const auto& sticker = stickers[slot];
             const bool selected_slot = slot == static_cast<std::size_t>(selected_sticker);
             const bool configured = sticker.kit_id > 0;
-            const auto preset = nskinzcs2::ui::sticker_preview::EffectivePreset(
-                weapon_definition, slot, legacy_model);
             // Project the real unit-wide CS2 sticker plane instead of the old
             // two-unit-wide editor marker.  This keeps the preview footprint
             // close to the in-game decal while retaining the VMDL surface
             // perspective below.
             const auto half_uv_extent =
                 nskinzcs2::ui::sticker_preview::ComputeStickerPreviewHalfExtent(
-                    sticker.scale,
-                    preset.authored_scale);
-            const auto radians = sticker.rotation * 3.14159265358979323846f / 180.0f;
+                    preview_scales[slot],
+                    preview_authored_scales[slot]);
+            const auto radians = preview_rotations[slot] * 3.14159265358979323846f / 180.0f;
             const auto cosine = std::cos(radians);
             const auto sine = std::sin(radians);
             const std::array<ImVec2, 4> local {
@@ -3233,7 +3327,7 @@ private:
                 const auto rotated_x = local[index].x * cosine - local[index].y * sine;
                 const auto rotated_y = local[index].x * sine + local[index].y * cosine;
                 points[index] = offset_to_canvas(
-                    slot,
+                    projection_slots[slot],
                     ImVec2(
                         effective_offsets[slot].x + rotated_x,
                         effective_offsets[slot].y + rotated_y));
@@ -3306,8 +3400,10 @@ private:
     void DrawStickersEditor(
         const Catalog& catalog,
         std::array<nskinzcs2::model::StickerProfile, 5>& stickers,
+        const std::uint64_t xuid,
         const int weapon_definition,
         const int paint_kit,
+        const int demo_tick,
         const char* scope_id,
         int& selected_sticker)
     {
@@ -3315,6 +3411,71 @@ private:
         const bool legacy_model = legacy_entry == catalog.weapon_paint_uses_legacy_model.end()
             ? true
             : legacy_entry->second;
+        const nskinzcs2::runtime::DemoResolvedStickerPlacement* resolved_placement = nullptr;
+        std::int64_t best_tick_distance = std::numeric_limits<std::int64_t>::max();
+        bool best_uses_active_ticks = false;
+        int best_available_slots = -1;
+        const auto distance_to_tick_range = [demo_tick](const int first_tick, const int last_tick)
+        {
+            if (demo_tick < 0 || first_tick < 0 || last_tick < first_tick)
+            {
+                return std::numeric_limits<std::int64_t>::max() / 2;
+            }
+            if (demo_tick < first_tick)
+            {
+                return static_cast<std::int64_t>(first_tick) - demo_tick;
+            }
+            if (demo_tick > last_tick)
+            {
+                return static_cast<std::int64_t>(demo_tick) - last_tick;
+            }
+            return std::int64_t {0};
+        };
+        for (const auto& candidate : demo_skin_rewrite_result_.resolved_sticker_placements)
+        {
+            if (candidate.xuid != xuid || candidate.definition_index != weapon_definition)
+            {
+                continue;
+            }
+            const auto available_slots = static_cast<int>(std::count_if(
+                candidate.slots.begin(),
+                candidate.slots.end(),
+                [](const auto& slot) { return slot.available; }));
+            const bool uses_active_ticks = demo_tick >= 0 &&
+                candidate.first_active_tick >= 0 &&
+                candidate.last_active_tick >= candidate.first_active_tick;
+            const auto tick_distance = uses_active_ticks
+                ? distance_to_tick_range(candidate.first_active_tick, candidate.last_active_tick)
+                : distance_to_tick_range(candidate.first_owned_tick, candidate.last_owned_tick);
+            const auto candidate_recent_tick = uses_active_ticks
+                ? candidate.first_active_tick
+                : candidate.first_owned_tick;
+            const auto selected_recent_tick = resolved_placement == nullptr
+                ? -1
+                : best_uses_active_ticks
+                    ? resolved_placement->first_active_tick
+                    : resolved_placement->first_owned_tick;
+            const bool better = resolved_placement == nullptr ||
+                (uses_active_ticks && !best_uses_active_ticks) ||
+                (uses_active_ticks == best_uses_active_ticks &&
+                    (tick_distance < best_tick_distance ||
+                        (tick_distance == best_tick_distance &&
+                            candidate_recent_tick > selected_recent_tick) ||
+                        (tick_distance == best_tick_distance &&
+                            candidate_recent_tick == selected_recent_tick &&
+                            available_slots > best_available_slots) ||
+                        (tick_distance == best_tick_distance &&
+                            candidate_recent_tick == selected_recent_tick &&
+                            available_slots == best_available_slots &&
+                            candidate.weapon_handle > resolved_placement->weapon_handle)));
+            if (better)
+            {
+                resolved_placement = &candidate;
+                best_tick_distance = tick_distance;
+                best_uses_active_ticks = uses_active_ticks;
+                best_available_slots = available_slots;
+            }
+        }
         ImGui::Columns(2, nullptr, false);
         ImGui::PushID(scope_id);
         ImGui::BeginChild("StickerList", ImVec2(0.0f, 180.0f), true);
@@ -3376,12 +3537,54 @@ private:
         {
             if (sticker.custom_position)
             {
-                const auto preset = nskinzcs2::ui::sticker_preview::DefaultStoredOffset(
-                    weapon_definition,
-                    static_cast<std::size_t>(selected_sticker),
-                    legacy_model);
-                sticker.offset_x = preset.x;
-                sticker.offset_y = preset.y;
+                const auto slot = static_cast<std::size_t>(selected_sticker);
+                const auto* resolved = resolved_placement != nullptr &&
+                        resolved_placement->slots[slot].available
+                    ? &resolved_placement->slots[slot]
+                    : nullptr;
+                if (resolved != nullptr)
+                {
+                    const auto projection_slot = static_cast<std::size_t>(resolved->schema);
+                    const auto anchor = nskinzcs2::ui::sticker_preview::NativePreset(
+                        weapon_definition, projection_slot, legacy_model);
+                    const auto preview =
+                        nskinzcs2::ui::sticker_preview::OffsetToPreviewOnProjectionSlot(
+                            weapon_definition,
+                            projection_slot,
+                            anchor.offset_x + resolved->offset_x,
+                            anchor.offset_y + resolved->offset_y,
+                            legacy_model);
+                    const auto hint = nskinzcs2::ui::sticker_preview::MaterialBaseOffset(
+                        weapon_definition, slot, legacy_model);
+                    const auto material =
+                        nskinzcs2::ui::sticker_preview::PreviewToEffectiveOffset(
+                            weapon_definition,
+                            slot,
+                            legacy_model,
+                            preview.x,
+                            preview.y,
+                            &hint);
+                    const auto stored = nskinzcs2::ui::sticker_preview::MaterialToStoredOffset(
+                        weapon_definition,
+                        slot,
+                        material.x,
+                        material.y,
+                        legacy_model);
+                    sticker.wear = resolved->wear;
+                    sticker.scale = resolved->scale;
+                    sticker.rotation = resolved->rotation;
+                    sticker.offset_x = nskinzcs2::model::NormalizeStickerOffset(stored.x);
+                    sticker.offset_y = nskinzcs2::model::NormalizeStickerOffset(stored.y);
+                }
+                else
+                {
+                    const auto preset = nskinzcs2::ui::sticker_preview::DefaultStoredOffset(
+                        weapon_definition,
+                        slot,
+                        legacy_model);
+                    sticker.offset_x = preset.x;
+                    sticker.offset_y = preset.y;
+                }
             }
             else
             {
@@ -3444,25 +3647,14 @@ private:
         if (ImGui::Button(Ui(UiTextId::StickerResetPresetPosition), ImVec2(-1.0f, 0.0f)))
         {
             const auto slot = static_cast<std::size_t>(selected_sticker);
-            if (nskinzcs2::ui::sticker_preview::HasNativePreset(
-                    weapon_definition,
-                    slot,
-                    legacy_model))
-            {
-                sticker.custom_position = false;
-                sticker.offset_x = 0.0f;
-                sticker.offset_y = 0.0f;
-            }
-            else
-            {
-                const auto preset = nskinzcs2::ui::sticker_preview::DefaultStoredOffset(
-                    weapon_definition,
-                    slot,
-                    legacy_model);
-                sticker.custom_position = true;
-                sticker.offset_x = preset.x;
-                sticker.offset_y = preset.y;
-            }
+            // Preserving the source transform is different from restoring a
+            // material-authored preset. Write an explicit transform so a free
+            // placement/schema inherited from the source cannot survive reset.
+            const auto preset = nskinzcs2::ui::sticker_preview::DefaultStoredOffset(
+                weapon_definition, slot, legacy_model);
+            sticker.custom_position = true;
+            sticker.offset_x = preset.x;
+            sticker.offset_y = preset.y;
             QueueStickerLivePreview();
         }
 
@@ -3488,7 +3680,8 @@ private:
             selected_sticker,
             weapon_definition,
             legacy_model,
-            LookupName(catalog.base_items, weapon_definition));
+            LookupName(catalog.base_items, weapon_definition),
+            resolved_placement);
         ImGui::TextWrapped("%s", Ui(UiTextId::StickerExistingSlotReplacementHelp));
 
         ImGui::Columns(1);

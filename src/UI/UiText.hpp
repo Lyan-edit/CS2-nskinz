@@ -208,6 +208,11 @@ enum class UiTextId : std::size_t
     DemoRewriteInProgress,
     DemoRewriteResult,
     DemoRewriteLoadAgain,
+    ConfigNameHelp,
+    NameTagHelp,
+    ItemQualityHelp,
+    GloveQualityHelp,
+    MapRadarReferenceLocked,
     Count,
 };
 
@@ -264,7 +269,7 @@ inline constexpr UiTextTable kEnglishTexts {
     "Catalog warnings:",
     "Add",
     "Remove",
-    "Name",
+    "Profile name",
     "Enabled",
     "XUID",
     "Seed",
@@ -274,8 +279,8 @@ inline constexpr UiTextTable kEnglishTexts {
     "- (Do not modify)",
     "Vanilla (No Finish)",
     "No Keychain (Remove)",
-    "Quality",
-    "Name Tag",
+    "Item quality",
+    "In-game name tag",
     "Item",
     "Add Knife",
     "Remove Knife",
@@ -320,7 +325,7 @@ inline constexpr UiTextTable kEnglishTexts {
     "Placement preview update pending...",
     "When enabled, sticker edits are published to the loaded demo at a throttled rate. The game view is authoritative; generate a Temporary Demo first if this slot has no offset/schema attributes.",
     "Click any numbered sticker to select it, then drag it to edit CS2's per-slot offset delta X/Y. A zero delta stays at that slot's material preset. Yellow is selected; configured unselected slots are white. The smaller quadrilateral is the projected bounding footprint of CS2's unit-wide decal plane, not the sticker artwork's alpha outline. The preview adds the delta to the weapon's real material base, converts the effective offset to UV1, and projects it through the VMDL onto the muzzle-left silhouette. Most legacy materials define only four visible presets, so a missing fifth slot starts on a sampled real model surface. Perspective, curvature and the final alpha outline still come from CS2.",
-    "Preset mode changes only the image and preserves every recorded transform. Custom placement writes wear, scale, rotation, offset X/Y and schema. Temporary Demo can create all missing fields; live preview updates them after they exist.",
+    "With Custom placement off, only the image changes and the Demo's recorded position is preserved. Use preset position writes this slot's standard home and enables Custom placement. Temporary Demo can create missing transform fields for live preview.",
     "Add Keychain",
     "Remove Keychain",
     "Weapon",
@@ -400,9 +405,9 @@ inline constexpr UiTextTable kEnglishTexts {
     "Press Update while the first demo load is active. Then run playdemo for the same demo again; replacement occurs during the second parse/load.",
     "Map runtime: hooks=%s, source=%s, target=%s, replacements=%llu",
     "Black-background tolerance",
-    "Higher removes more black grid; lower preserves more very-dark roads. The value is applied as a real correction to automatic matte detection. Mirage Water uses its audited reference mask instead of this heuristic. Releasing the slider recompiles a new cache-isolated overlay; reload the demo to apply it.",
+    "For unrecorded radar versions, higher removes more dark background and lower preserves more dark detail. Reviewed versions reuse their saved transparent standard, so this correction does not change their contour. Reload the demo after changing an inferred overlay.",
     "Dark-road recovery radius",
-    "Restores bounded dark road gaps without growing the exterior background. Use 8-16 normally; raise it up to 64 for a wider missing corridor. Mirage Water is pinned to its audited 720x720 alpha reference, so this heuristic radius intentionally has no effect on that map.",
+    "For unrecorded radar versions, restores bounded dark road gaps. Reviewed versions use their saved road contour and ignore this heuristic radius.",
     "Classified background opacity",
     "0%% is fully transparent. This changes pixels classified as the baked background and synchronizes cl_hud_radar_background_alpha so mirv_pov does not leave a separate black circle behind transparent Workshop radar pixels. Map roads and player markers are unchanged.",
     "Reset radar mask defaults",
@@ -415,6 +420,11 @@ inline constexpr UiTextTable kEnglishTexts {
     "Rewriting the demo in the isolated UI process... This can take several minutes.",
     "Result: %s",
     "Load generated demo again",
+    "Labels this profile in the list and saved configuration. It does not rename the item in the Demo.",
+    "Writes the item's custom name in the Demo. An empty value uses the nSkinz CS2 default tag. The knife's right HUD label displays its full model and finish name separately.",
+    "Controls the economy item's quality marker, not texture quality or wear. The field is written and verified by the live/rewrite paths. Some values have no visible effect for a particular item. StatTrak counters use the separate StatTrak setting.",
+    "Controls the glove economy item's quality marker, not texture quality or wear. For a painted glove, Default (0) is automatically written as Unusual (3), which is required by the default-glove reconstruction path. Other selected values are retained; many do not change the glove's appearance.",
+    "Saved transparent radar standard: road contours and matte cleanup are fixed. The background opacity remains independently adjustable.",
 };
 
 inline constexpr UiTextTable kChineseTexts {
@@ -466,7 +476,7 @@ inline constexpr UiTextTable kChineseTexts {
     "Catalog 警告:",
     "新增",
     "删除",
-    "名称",
+    "配置名称",
     "启用",
     "XUID",
     "Seed",
@@ -476,8 +486,8 @@ inline constexpr UiTextTable kChineseTexts {
     "-（不修改）",
     "原皮（无涂装）",
     "无挂件（移除）",
-    "品质",
-    "名称标签",
+    "物品品质",
+    "游戏内名称标签",
     "物品",
     "新增刀配置",
     "删除刀配置",
@@ -522,7 +532,7 @@ inline constexpr UiTextTable kChineseTexts {
     "贴纸位置预览正在同步……",
     "启用后会以节流频率把贴纸改动发布到当前 Demo。游戏画面是最终效果；如果该槽位没有 offset/schema 属性，请先生成一次临时换肤 Demo。",
     "点击任意编号贴纸即可选中，再拖动调整 CS2 相对当前槽位基准的 offset 增量 X/Y；增量为 0 时保持材质预设位置。选中槽位显示黄色，其他已配置槽位显示白色。缩小后的四边形表示 CS2 单位贴纸平面经投影后的包围轮廓，并非贴纸图案自身的透明轮廓。预览会把增量加到该枪型真实材质基准，再把有效 offset 转为 UV1，并经过 VMDL 侧投影对齐到枪口朝左的轮廓。多数旧材质只有 4 个可见预设，因此缺失的第 5 个位置会从模型真实表面采样起点。最终画面的透视、曲面变形和透明轮廓仍由 CS2 决定。",
-    "预设模式只替换图案并保留 Demo 已记录的所有变换。自定义位置会写入磨损、缩放、旋转、offset X/Y 和 schema；临时 Demo 可补齐字段，字段存在后即可实时预览。",
+    "关闭自定义位置时，只替换图案并保留 Demo 的原位置。“使用预设位置”会写入当前槽位的标准位置，并启用自定义位置。临时 Demo 可补齐变换字段，字段存在后即可实时预览。",
     "新增挂件配置",
     "删除挂件配置",
     "武器",
@@ -602,9 +612,9 @@ inline constexpr UiTextTable kChineseTexts {
     "在第一次 Demo 已加载时点击 Update，然后对同一个 Demo 再执行一次 playdemo；地图会在第二次解析／加载过程中替换。",
     "地图运行时：hooks=%s，原地图=%s，目标=%s，替换次数=%llu",
     "黑底容差",
-    "数值越高，去除的黑色网格越多；数值越低，保留的深色道路越多。该值会作为自动暗底检测的实际偏移量。Mirage Water 使用已核验的基准蒙版，不使用此推断参数。松开滑块会编译新的独立缓存覆盖，重载 Demo 后生效。",
+    "仅用于未收录的雷达版本：数值越高去除的暗底越多，越低保留的深色细节越多。已核验版本会复用保存的透明标准，此参数不会改变其轮廓。调整推断图后需要重载 Demo。",
     "暗色道路恢复半径",
-    "补回被地图道路包住的暗色缺口，不会向外扩张黑底。通常使用 8-16；较宽道路缺失时最高可调到 64。Mirage Water 已固定使用核验过的 720×720 透明基准图，因此该推断半径不会影响这张地图。",
+    "仅用于未收录的雷达版本，补回被道路包住的暗色缺口。已核验版本使用保存的道路轮廓，不使用此推断半径。",
     "已识别黑底的不透明度",
     "0%% 为完全透明。它会同时处理被识别为黑底的像素，并同步 cl_hud_radar_background_alpha，避免 mirv_pov 在工坊雷达的透明区域后面留下独立黑色圆底。地图道路和玩家圆点不受影响。",
     "恢复雷达遮罩默认值",
@@ -617,6 +627,11 @@ inline constexpr UiTextTable kChineseTexts {
     "正在外置 UI 进程中重写 Demo……可能需要数分钟。",
     "结果：%s",
     "再次加载已生成 Demo",
+    "用于左侧列表和保存配置中的识别名称，不会修改 Demo 中的物品名字。",
+    "写入游戏内的物品自定义名称；留空使用 nSkinz CS2 默认标签。刀具右侧 HUD 单独显示完整刀型和涂装名称。",
+    "修改经济物品的品质标记，与贴图清晰度、画质和磨损无关。实时替换和重建路径会写入并校验此字段；部分值在特定物品上没有可见差异。StatTrak 计数由独立的 StatTrak 选项控制。",
+    "修改手套经济物品的品质标记，与画质、磨损无关。带涂装的手套选择默认（0）时会自动写入特殊（3），默认手套重建需要这一转换。其它所选值会保留，但很多值不会改变手套外观。",
+    "已使用保存的透明雷达标准，道路轮廓和暗底清理已固定；背景不透明度仍可单独调整。",
 };
 }
 
@@ -626,5 +641,17 @@ inline const char* Text(const UiTextId id) noexcept
     return build::kUiLanguageChinese
         ? detail::kChineseTexts[index]
         : detail::kEnglishTexts[index];
+}
+
+inline const char* QualityDisplayName(const int id, const char* fallback) noexcept
+{
+    // Apply at display time so existing English catalog snapshots also work.
+    // Persist the numeric quality ID; unknown future IDs retain their source name.
+    static constexpr std::array<const char*, 15> chinese {
+        "默认", "纯正", "经典", "特殊（★）", "独特", "社区", "开发者", "自制",
+        "定制", "计数（StatTrak™）", "已完成", "阴森", "纪念品", "高光", "易变"
+    };
+    return build::kUiLanguageChinese && id >= 0 && static_cast<std::size_t>(id) < chinese.size()
+        ? chinese[static_cast<std::size_t>(id)] : fallback;
 }
 }

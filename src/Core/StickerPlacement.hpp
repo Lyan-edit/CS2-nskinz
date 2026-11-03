@@ -6,11 +6,14 @@
 namespace nskinzcs2::model
 {
 // CS2's "sticker slot N schema" attribute selects the material-authored
-// sticker home used by a logical slot. Schema zero means "use this slot".
+// sticker home used by a logical slot. An explicit zero selects home zero;
+// only an absent attribute or -1 selects the logical slot's own home.
 // Several weapon/model variants only author four homes, so logical slot five
 // must borrow an existing home and add the measured offset below.
 struct StickerAnchorPlacement
 {
+    // Internal override sentinel only. ResolveSerializedStickerSchema converts
+    // this sentinel to the logical slot before writing an Econ attribute.
     std::uint32_t schema = 0;
     float offset_x = 0.0f;
     float offset_y = 0.0f;
@@ -106,6 +109,15 @@ struct StickerAnchorPlacement
     return placement.BorrowsAnotherSlot()
         ? static_cast<std::size_t>(placement.schema)
         : logical_slot;
+}
+
+[[nodiscard]] constexpr std::uint32_t ResolveSerializedStickerSchema(
+    const int weapon_definition,
+    const std::size_t logical_slot,
+    const bool legacy_model) noexcept
+{
+    return static_cast<std::uint32_t>(ResolveStickerProjectionSlot(
+        weapon_definition, logical_slot, legacy_model));
 }
 
 [[nodiscard]] constexpr float ResolveSerializedStickerOffsetX(

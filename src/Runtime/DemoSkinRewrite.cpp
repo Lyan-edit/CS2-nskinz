@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cwctype>
 #include <fstream>
 #include <map>
@@ -590,7 +591,8 @@ json BuildBatchItem(
                         slot,
                         legacy_model,
                         nskinzcs2::model::NormalizeStickerOffset(sticker.offset_y)))},
-                {"schema", placement.schema},
+                {"schema", nskinzcs2::model::ResolveSerializedStickerSchema(
+                    source_definition, slot, legacy_model)},
             });
         }
     }
@@ -1207,6 +1209,51 @@ DemoSkinRewriteResult nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
         verification_ms = response.value("verification_ms", std::uint64_t {0});
         total_ms = response.value("total_ms", std::uint64_t {0});
         input_mode = Utf8ToWide(response.value("input_mode", std::string {}));
+        if (const auto placements = response.find("resolved_sticker_placements");
+            placements != response.end() && placements->is_array())
+        {
+            for (const auto& encoded : *placements)
+            {
+                if (!encoded.is_object()) continue;
+                nskinzcs2::runtime::DemoResolvedStickerPlacement placement;
+                placement.xuid = std::stoull(encoded.value("steam_id64", std::string("0")));
+                placement.definition_index = encoded.value("definition_index", 0);
+                placement.weapon_handle = encoded.value("weapon_handle", std::uint32_t {0});
+                placement.first_owned_tick = encoded.value("first_owned_tick", -1);
+                placement.last_owned_tick = encoded.value("last_owned_tick", -1);
+                placement.first_active_tick = encoded.value("first_active_tick", -1);
+                placement.last_active_tick = encoded.value("last_active_tick", -1);
+                const auto slots = encoded.find("slots");
+                if (placement.xuid == 0 || placement.definition_index <= 0 ||
+                    slots == encoded.end() || !slots->is_array())
+                {
+                    continue;
+                }
+                const auto slot_count = std::min(placement.slots.size(), slots->size());
+                for (std::size_t slot = 0; slot < slot_count; ++slot)
+                {
+                    const auto& encoded_slot = (*slots)[slot];
+                    if (!encoded_slot.is_object()) continue;
+                    auto& destination = placement.slots[slot];
+                    destination.available = encoded_slot.value("available", false);
+                    destination.source_preserved = encoded_slot.value("source_preserved", false);
+                    destination.wear = encoded_slot.value("wear", 0.0000001f);
+                    destination.scale = encoded_slot.value("scale", 1.0f);
+                    destination.rotation = encoded_slot.value("rotation", 0.0f);
+                    destination.offset_x = encoded_slot.value("offset_x", 0.0f);
+                    destination.offset_y = encoded_slot.value("offset_y", 0.0f);
+                    destination.schema = encoded_slot.value("schema", static_cast<std::uint32_t>(slot));
+                    destination.available = destination.available &&
+                        std::isfinite(destination.wear) &&
+                        std::isfinite(destination.scale) &&
+                        std::isfinite(destination.rotation) &&
+                        std::isfinite(destination.offset_x) &&
+                        std::isfinite(destination.offset_y) &&
+                        destination.schema < placement.slots.size();
+                }
+                result.resolved_sticker_placements.push_back(std::move(placement));
+            }
+        }
     }
     catch (const std::exception& exception)
     {

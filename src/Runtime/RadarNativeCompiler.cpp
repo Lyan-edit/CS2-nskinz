@@ -401,6 +401,9 @@ bool nskinzcs2::runtime::CompileRadarOverlayWithCs2(
         return false;
     }
 
+    // Reviewed PNGs must reach Panorama without BC7 block quantization
+    // introducing a new dark fringe around their approved alpha contour.
+    const std::string output_format = overlay.used_map_reference_mask ? "RGBA8888" : "BC7";
     const std::string vtex_source =
         "<!-- dmx encoding keyvalues2_noids 1 format vtex 1 -->\n"
         "\"CDmeVtex\"\n{\n"
@@ -412,7 +415,7 @@ bool nskinzcs2::runtime::CompileRadarOverlayWithCs2(
         "            \"m_typeString\" \"string\" \"2D\"\n"
         "        }\n    ]\n"
         "    \"m_outputTypeString\" \"string\" \"2D\"\n"
-        "    \"m_outputFormat\" \"string\" \"BC7\"\n"
+        "    \"m_outputFormat\" \"string\" \"" + output_format + "\"\n"
         "    \"m_outputClearColor\" \"vector4\" \"0 0 0 0\"\n"
         "    \"m_textureOutputChannelArray\" \"element_array\"\n    [\n"
         "        \"CDmeTextureOutputChannel\"\n        {\n"

@@ -173,6 +173,7 @@ struct Response {
     sticker_slot_count: usize,
     created_sticker_slot_count: usize,
     missing_sticker_slot_count: usize,
+    resolved_sticker_placements: Vec<ResolvedStickerPlacement>,
     animation_resource_count: usize,
     animation_resource_source: String,
     input_mode: String,
@@ -181,6 +182,30 @@ struct Response {
     rewrite_ms: u64,
     verification_ms: u64,
     total_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+struct ResolvedStickerSlot {
+    available: bool,
+    source_preserved: bool,
+    wear: f32,
+    scale: f32,
+    rotation: f32,
+    offset_x: f32,
+    offset_y: f32,
+    schema: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ResolvedStickerPlacement {
+    steam_id64: String,
+    definition_index: u16,
+    weapon_handle: u32,
+    first_owned_tick: i32,
+    last_owned_tick: i32,
+    first_active_tick: i32,
+    last_active_tick: i32,
+    slots: [ResolvedStickerSlot; STICKER_SLOT_COUNT],
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -366,6 +391,8 @@ const KNIFE_ASSETS: &[KnifeAsset] = &[
 struct PawnDiscovery {
     controllers: HashSet<u32>,
     weapons: HashSet<u32>,
+    weapon_owned_ticks: HashMap<u32, (i32, i32)>,
+    weapon_active_ticks: HashMap<u32, (i32, i32)>,
     teams: HashSet<u8>,
     glove_definitions_by_team: HashMap<u8, u16>,
     glove_paint_attributes_by_team: HashMap<u8, PaintAttributeLayout>,
@@ -402,6 +429,8 @@ struct WeaponDiscovery {
     sticker_attribute_indices:
         [[HashSet<usize>; STICKER_ATTRIBUTE_COMPONENT_COUNT]; STICKER_SLOT_COUNT],
     sticker_attribute_values:
+        [[HashSet<u32>; STICKER_ATTRIBUTE_COMPONENT_COUNT]; STICKER_SLOT_COUNT],
+    sticker_attribute_raw_values:
         [[HashSet<u32>; STICKER_ATTRIBUTE_COMPONENT_COUNT]; STICKER_SLOT_COUNT],
 }
 
@@ -596,6 +625,9 @@ fn discover_weapon_attributes(entity: &Entity, weapon: &mut WeaponDiscovery) {
             continue;
         };
         weapon.sticker_attribute_indices[logical_slot][component].insert(attribute_index);
+        if let Some(value) = entity.try_get_property(&field.raw).and_then(union_u32) {
+            weapon.sticker_attribute_raw_values[logical_slot][component].insert(value);
+        }
         for value in [field.raw.as_str(), field.initial.as_str()]
             .iter()
             .filter_map(|name| entity.try_get_property(name))
@@ -628,7 +660,7 @@ impl Observer for Discovery {
 
     fn on_entity(
         &mut self,
-        _ctx: &Context,
+        ctx: &Context,
         event: EntityEvents,
         entity: &Entity,
     ) -> ObserverResult {
@@ -680,10 +712,31 @@ impl Observer for Discovery {
                     }
                 }
             }
+            let observed_tick = i32::try_from(ctx.tick()).unwrap_or(i32::MAX);
+            if let Some(active_weapon) =
+                field_integer(entity, "m_pWeaponServices.m_hActiveWeapon").map(|value| value as u32)
+            {
+                if active_weapon != u32::MAX && active_weapon != 0xFFFF_FFFE {
+                    pawn.weapon_active_ticks
+                        .entry(active_weapon)
+                        .and_modify(|range| {
+                            range.0 = range.0.min(observed_tick);
+                            range.1 = range.1.max(observed_tick);
+                        })
+                        .or_insert((observed_tick, observed_tick));
+                }
+            }
             for name in WEAPON_FIELDS.iter() {
                 if let Some(weapon) = field_integer(entity, name).map(|value| value as u32) {
                     if weapon != u32::MAX && weapon != 0xFFFF_FFFE {
                         pawn.weapons.insert(weapon);
+                        pawn.weapon_owned_ticks
+                            .entry(weapon)
+                            .and_modify(|range| {
+                                range.0 = range.0.min(observed_tick);
+                                range.1 = range.1.max(observed_tick);
+                            })
+                            .or_insert((observed_tick, observed_tick));
                     }
                 }
             }
@@ -1180,6 +1233,12 @@ struct WeaponRule {
 
 #[derive(Clone)]
 struct StickerRule {
+    steam: u64,
+    definition: u16,
+    first_owned_tick: i32,
+    last_owned_tick: i32,
+    first_active_tick: i32,
+    last_active_tick: i32,
     kits: [i32; STICKER_SLOT_COUNT],
     expected_attribute_values:
         [[Option<u32>; STICKER_ATTRIBUTE_COMPONENT_COUNT]; STICKER_SLOT_COUNT],
@@ -1409,6 +1468,24 @@ fn build_rewrite_plan(
                             requested_sticker_slots.insert((*weapon_handle, logical_slot));
                             let rule = sticker_weapons.entry(*weapon_handle).or_insert_with(|| {
                                 StickerRule {
+                                    steam: *steam,
+                                    definition: discovered.definition,
+                                    first_owned_tick: pawn
+                                        .weapon_owned_ticks
+                                        .get(weapon_handle)
+                                        .map_or(-1, |range| range.0),
+                                    last_owned_tick: pawn
+                                        .weapon_owned_ticks
+                                        .get(weapon_handle)
+                                        .map_or(-1, |range| range.1),
+                                    first_active_tick: pawn
+                                        .weapon_active_ticks
+                                        .get(weapon_handle)
+                                        .map_or(-1, |range| range.0),
+                                    last_active_tick: pawn
+                                        .weapon_active_ticks
+                                        .get(weapon_handle)
+                                        .map_or(-1, |range| range.1),
                                     kits: [0; STICKER_SLOT_COUNT],
                                     expected_attribute_values: [[None;
                                         STICKER_ATTRIBUTE_COMPONENT_COUNT];
@@ -2286,6 +2363,110 @@ fn verify_sticker_rewrites(plan: &RewritePlan, discovery: &Discovery) -> Result<
     Ok(verified)
 }
 
+fn resolved_sticker_component(values: &HashSet<u32>, default_bits: u32) -> Option<u32> {
+    match values.len() {
+        0 => Some(default_bits),
+        1 => values.iter().next().copied(),
+        _ => None,
+    }
+}
+
+fn collect_resolved_sticker_placements(
+    plan: &RewritePlan,
+    discovery: &Discovery,
+) -> Vec<ResolvedStickerPlacement> {
+    let mut placements = Vec::with_capacity(plan.sticker_weapons.len());
+
+    for (handle, rule) in &plan.sticker_weapons {
+        let Some(weapon) = discovery.weapons.get(handle) else {
+            continue;
+        };
+        let mut slots = [ResolvedStickerSlot::default(); STICKER_SLOT_COUNT];
+
+        for (logical_slot, desired) in rule.kits.iter().copied().enumerate() {
+            if desired <= 0 {
+                continue;
+            }
+            let defaults = [
+                desired as u32,
+                0.0000001f32.to_bits(),
+                1.0f32.to_bits(),
+                0.0f32.to_bits(),
+                0.0f32.to_bits(),
+                0.0f32.to_bits(),
+                logical_slot as u32,
+            ];
+            let mut bits = [0u32; STICKER_ATTRIBUTE_COMPONENT_COUNT];
+            let mut complete = true;
+            for component in 0..STICKER_ATTRIBUTE_COMPONENT_COUNT {
+                let observed =
+                    &weapon.sticker_attribute_raw_values[logical_slot][component];
+                let observed = if observed.is_empty() {
+                    &weapon.sticker_attribute_values[logical_slot][component]
+                } else {
+                    observed
+                };
+                let Some(value) = resolved_sticker_component(
+                    observed,
+                    defaults[component],
+                ) else {
+                    complete = false;
+                    break;
+                };
+                bits[component] = value;
+            }
+            let candidate = ResolvedStickerSlot {
+                available: complete,
+                source_preserved: rule.expected_attribute_values[logical_slot][1..]
+                    .iter()
+                    .all(Option::is_none),
+                wear: f32::from_bits(bits[1]),
+                scale: f32::from_bits(bits[2]),
+                rotation: f32::from_bits(bits[3]),
+                offset_x: f32::from_bits(bits[4]),
+                offset_y: f32::from_bits(bits[5]),
+                // The native integer getter uses -1 as its missing-value
+                // sentinel, then falls back to the logical slot. Explicit
+                // zero selects home zero, including on slots two through five.
+                schema: if bits[6] == u32::MAX {
+                    logical_slot as u32
+                } else {
+                    bits[6]
+                },
+            };
+            let finite = candidate.wear.is_finite()
+                && candidate.scale.is_finite()
+                && candidate.rotation.is_finite()
+                && candidate.offset_x.is_finite()
+                && candidate.offset_y.is_finite();
+            if candidate.available && finite && candidate.schema < STICKER_SLOT_COUNT as u32 {
+                slots[logical_slot] = candidate;
+            }
+        }
+
+        placements.push(ResolvedStickerPlacement {
+            steam_id64: rule.steam.to_string(),
+            definition_index: rule.definition,
+            weapon_handle: *handle,
+            first_owned_tick: rule.first_owned_tick,
+            last_owned_tick: rule.last_owned_tick,
+            first_active_tick: rule.first_active_tick,
+            last_active_tick: rule.last_active_tick,
+            slots,
+        });
+    }
+
+    placements.sort_by_key(|placement| {
+        (
+            placement.steam_id64.clone(),
+            placement.definition_index,
+            placement.first_owned_tick,
+            placement.weapon_handle,
+        )
+    });
+    placements
+}
+
 fn verify_glove_rewrites(plan: &RewritePlan, discovery: &Discovery) -> Result<usize> {
     let mut verified = 0;
     for (handle, rules) in &plan.gloves {
@@ -2475,6 +2656,8 @@ fn rewrite(request: &Request) -> Result<Response> {
             "sticker verification count mismatch: planned {rewritten_sticker_slots}, verified {verified_sticker_slots}"
         );
     }
+    let resolved_sticker_placements =
+        collect_resolved_sticker_placements(&plan, &rewritten_discovery);
     let verification_ms = elapsed_ms(verification_started);
     Ok(Response {
         ok: true,
@@ -2502,6 +2685,7 @@ fn rewrite(request: &Request) -> Result<Response> {
         sticker_slot_count: rewritten_sticker_slots,
         created_sticker_slot_count: created_sticker_slots,
         missing_sticker_slot_count: missing_sticker_slots,
+        resolved_sticker_placements,
         animation_resource_count: counts.6,
         animation_resource_source: if counts.6 == 0 {
             "none".to_string()
@@ -2577,6 +2761,7 @@ fn run_main() -> Result<()> {
                 sticker_slot_count: 0,
                 created_sticker_slot_count: 0,
                 missing_sticker_slot_count: 0,
+                resolved_sticker_placements: Vec::new(),
                 animation_resource_count: 0,
                 animation_resource_source: String::new(),
                 input_mode: String::new(),
@@ -2836,6 +3021,12 @@ mod tests {
     #[test]
     fn sticker_ids_preserve_integer_union_bits() {
         let rule = StickerRule {
+            steam: 76561198000000000,
+            definition: 7,
+            first_owned_tick: 120,
+            last_owned_tick: 240,
+            first_active_tick: 140,
+            last_active_tick: 220,
             kits: [76, 0, 0, 0, 0],
             expected_attribute_values: [[None; STICKER_ATTRIBUTE_COMPONENT_COUNT];
                 STICKER_SLOT_COUNT],
@@ -2862,6 +3053,24 @@ mod tests {
             ),
             Some(FieldValue::Float(f32::from_bits(76)))
         );
+    }
+
+    #[test]
+    fn resolved_sticker_components_keep_defaults_and_reject_conflicts() {
+        let empty = HashSet::new();
+        assert_eq!(
+            resolved_sticker_component(&empty, 1.0f32.to_bits()),
+            Some(1.0f32.to_bits())
+        );
+
+        let singleton = HashSet::from([0.125f32.to_bits()]);
+        assert_eq!(
+            resolved_sticker_component(&singleton, 0),
+            Some(0.125f32.to_bits())
+        );
+
+        let conflicting = HashSet::from([0.125f32.to_bits(), 0.25f32.to_bits()]);
+        assert_eq!(resolved_sticker_component(&conflicting, 0), None);
     }
 
     #[test]
@@ -3054,6 +3263,26 @@ mod tests {
             "m_AttributeManager.m_Item.m_NetworkedDynamicAttributes.m_Attributes.0007.m_iRawValue32",
             FieldValue::Float(f32::from_bits(0)),
         ));
+
+        // Reproduce the native distinction between missing schema (-1 ->
+        // logical home) and explicit zero (home zero), including raw/initial
+        // disagreement. This is also the data consumed by the preview UI.
+        let mut preview_plan = plan.clone();
+        preview_plan.sticker_weapons.get_mut(&100).unwrap().kits = [76; STICKER_SLOT_COUNT];
+        let mut rewritten = Discovery::default();
+        let mut weapon = WeaponDiscovery::default();
+        weapon.sticker_attribute_raw_values[0][6].insert(2);
+        weapon.sticker_attribute_raw_values[1][6].insert(0);
+        weapon.sticker_attribute_values[1][6].insert(3);
+        weapon.sticker_attribute_raw_values[3][6].insert(u32::MAX);
+        weapon.sticker_attribute_raw_values[4][6].insert(1);
+        rewritten.weapons.insert(100, weapon);
+        let placements = collect_resolved_sticker_placements(&preview_plan, &rewritten);
+        assert_eq!(placements.len(), 1);
+        for (slot, expected) in [2, 0, 2, 3, 1].into_iter().enumerate() {
+            assert!(placements[0].slots[slot].available);
+            assert_eq!(placements[0].slots[slot].schema, expected);
+        }
     }
 
     #[test]

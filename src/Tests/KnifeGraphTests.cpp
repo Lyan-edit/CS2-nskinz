@@ -4,11 +4,13 @@
 #include "Runtime/KnifeNative.hpp"
 #include "Runtime/KnifeLifecycle.hpp"
 #include "Runtime/KnifeFinish.hpp"
+#include "Runtime/KnifeHudName.hpp"
 #include "Runtime/KnifeUpdateProbe.hpp"
 #include "Runtime/GloveVisualRefresh.hpp"
 #include "Cs2/Runtime.hpp"
 
 #include <Windows.h>
+#include <MinHook.h>
 #include <array>
 #include <cstring>
 #include <filesystem>
@@ -1196,21 +1198,79 @@ void KnifeSerializationRouting()
     std::cout << "knife_serialization_routing=PASS; 484 scoped pairs; offline_only=1; native_arguments_preserved=1\n";
 }
 
-void InstalledBinaryEvidence()
+using HudUpdateFixtureFn = void (__fastcall*)(void*, void*, bool);
+HudUpdateFixtureFn hud_update_fixture_original = nullptr;
+int hud_update_fixture_calls = 0;
+bool hud_update_fixture_changed = false;
+void __fastcall HudUpdateFixtureDetour(void* view, void* pawn, bool changed)
 {
-    const auto* client = _wgetenv(L"NSKINZCS2_KNIFE_CLIENT_DLL");
-    const auto* animation = _wgetenv(L"NSKINZCS2_KNIFE_ANIMATION_DLL");
-    if (client == nullptr && animation == nullptr)
-    { std::cout << "knife_graph_installed_evidence=SKIPPED (set both PE paths)\n"; return; }
-    Check(client != nullptr && animation != nullptr, "both binary paths required");
+    ++hud_update_fixture_calls;
+    hud_update_fixture_changed = changed;
+    hud_update_fixture_original(view, pawn, changed);
+}
+
+void InstalledHudUpdateTrampoline(const wchar_t* client)
+{
+    // Execute only the audited null-pawn early return, in a private copy inside
+    // this test process. No game process is opened and no game state is touched.
+    const auto bytes = ReadPeRva(client, kKnifeHudSelectionUpdateRva, 0x611);
+    Check(bytes[0] == 0x48 && bytes[3] == 0x0F && bytes.back() == 0xC3, "HUD null-pawn branch and return");
+    struct Lease
+    {
+        void* code = nullptr;
+        bool owns_min_hook = false;
+        ~Lease()
+        {
+            if (code) { MH_DisableHook(code); MH_RemoveHook(code); VirtualFree(code, 0, MEM_RELEASE); }
+            if (owns_min_hook) MH_Uninitialize();
+            hud_update_fixture_original = nullptr;
+        }
+    } lease;
+    lease.code = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    Check(lease.code != nullptr, "private HUD trampoline allocation");
+    std::memcpy(lease.code, bytes.data(), bytes.size());
+    DWORD previous = 0;
+    Check(VirtualProtect(lease.code, 4096, PAGE_EXECUTE_READ, &previous) != 0, "private HUD code protection");
+    FlushInstructionCache(GetCurrentProcess(), lease.code, bytes.size());
+    const auto initialized = MH_Initialize();
+    Check(initialized == MH_OK || initialized == MH_ERROR_ALREADY_INITIALIZED, "HUD trampoline MinHook init");
+    lease.owns_min_hook = initialized == MH_OK;
+    void* original = nullptr;
+    Check(MH_CreateHook(lease.code, reinterpret_cast<void*>(&HudUpdateFixtureDetour), &original) == MH_OK && original,
+        "the real HUD entry's conditional branch can be relocated");
+    hud_update_fixture_original = reinterpret_cast<HudUpdateFixtureFn>(original);
+    hud_update_fixture_calls = 0;
+    Check(MH_EnableHook(lease.code) == MH_OK, "private HUD detour enabled");
+    const auto invoke = reinterpret_cast<HudUpdateFixtureFn>(lease.code);
+    invoke(nullptr, nullptr, true);
+    Check(hud_update_fixture_calls == 1 && hud_update_fixture_changed, "HUD original null return preserves the callback's true argument");
+    invoke(nullptr, nullptr, false);
+    Check(hud_update_fixture_calls == 2 && !hud_update_fixture_changed, "HUD original null return preserves the callback's false argument");
+    std::cout << "knife_right_hud_private_trampoline=PASSED; game_process_opened=0; null_pawn_only=1\n";
+}
+
+void InstalledFinishBinaryEvidence(const wchar_t* client)
+{
     Memory resources;
     constexpr std::uintptr_t image_base = 0x10000000, image_size = 0x3000000;
-    for (const auto& window : KnifeSerializationEvidenceWindows())
+    const auto check_call = [&](const std::uintptr_t caller, const std::uintptr_t target, const char* message)
     {
-        const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
-        for (std::size_t i = 0; i < bytes.size(); ++i) resources.Set(image_base + window.rva + i, bytes[i]);
-    }
-    Check(VerifyKnifeSerializationEvidence(image_base, image_size, resources), "installed recorded/local animation serialization ABI");
+        const auto bytes = ReadPeRva(client, caller, 5);
+        Check(bytes.size() == 5 && bytes[0] == 0xE8, "installed direct call opcode");
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, bytes.data() + 1, sizeof(displacement));
+        Check(static_cast<std::int64_t>(caller) + 5 + displacement == static_cast<std::int64_t>(target), message);
+    };
+    // Read both ends from the real PE. A blanket RVA shift is incorrect: the
+    // material apply function moved in 2000940, its current-model callee did not.
+    check_call(kKnifeMaterialApplyRva + 0x22, 0x21C8D0, "material apply still reads the current model");
+    check_call(0x804210, kKnifeClearMaterialsRva, "generator failure clears the verified material owner");
+    check_call(0x10D8839, kKnifeCopyMaterialsRva, "native HUD construction uses the verified material-copy entry");
+    check_call(0x1192E52, kKnifeInvalidateItemNameRva, "native Econ attribute setter invalidates this name cache");
+    check_call(0xEAADA8, kKnifeGetItemNameRva, "right HUD name consumer uses this item-name getter");
+    check_call(0xE09AF6, kKnifeGetItemNameRva, "full display-name consumer requests the same getter with true");
+    check_call(0xEAADCC, kKnifeHudSetDialogStringRva, "right HUD icon writes this exact string dialog variable");
+    check_call(0xEB2DAA, kKnifeHudSelectionUpdateRva, "HUD think updates this view with the selected pawn");
     for (const auto& window : KnifeFinishEvidenceWindows())
     {
         const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
@@ -1232,6 +1292,149 @@ void InstalledBinaryEvidence()
         Check(!VerifyKnifeFinishEvidence(image_base, image_size, resources), "truncated material ABI rejected");
         resources.Set(address, saved);
     }
+    std::cout << "knife_finish_installed_evidence=PASSED\n";
+    for (const auto& window : KnifeHudNameEvidenceWindows())
+    {
+        const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
+        for (std::size_t i = 0; i < bytes.size(); ++i) resources.Set(image_base + window.rva + i, bytes[i]);
+    }
+    Check(VerifyKnifeHudNameEvidence(image_base, image_size, resources),
+        "installed native HUD name consumer, cached getter and Econ setter invalidation ABI");
+    for (const auto& window : KnifeHudNameEvidenceWindows())
+    {
+        for (std::size_t i = 0; i < window.bytes.size(); ++i)
+        {
+            auto& byte = resources.bytes.at(image_base + window.rva + i);
+            byte ^= 1;
+            Check(!VerifyKnifeHudNameEvidence(image_base, image_size, resources), "changed HUD name ABI rejected");
+            byte ^= 1;
+        }
+        const auto address = image_base + window.rva + window.bytes.size() - 1;
+        const auto saved = resources.bytes.at(address);
+        resources.bytes.erase(address);
+        Check(!VerifyKnifeHudNameEvidence(image_base, image_size, resources), "truncated HUD name ABI rejected");
+        resources.Set(address, saved);
+    }
+    std::cout << "knife_hud_name_installed_evidence=PASSED\n";
+    for (const auto& window : KnifeHudLabelEvidenceWindows())
+    {
+        const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
+        for (std::size_t i = 0; i < bytes.size(); ++i) resources.Set(image_base + window.rva + i, bytes[i]);
+    }
+    Check(VerifyKnifeHudLabelEvidence(image_base, image_size, resources), "installed right HUD view and dialog-string ABI");
+    for (const auto& window : KnifeHudLabelEvidenceWindows())
+    {
+        for (std::size_t i = 0; i < window.bytes.size(); ++i)
+        {
+            auto& byte = resources.bytes.at(image_base + window.rva + i);
+            byte ^= 1;
+            Check(!VerifyKnifeHudLabelEvidence(image_base, image_size, resources), "changed right HUD label ABI rejected");
+            byte ^= 1;
+        }
+        const auto address = image_base + window.rva + window.bytes.size() - 1;
+        const auto saved = resources.bytes.at(address);
+        resources.bytes.erase(address);
+        Check(!VerifyKnifeHudLabelEvidence(image_base, image_size, resources), "truncated right HUD label ABI rejected");
+        resources.Set(address, saved);
+    }
+    std::cout << "knife_right_hud_label_installed_evidence=PASSED\n";
+    InstalledHudUpdateTrampoline(client);
+}
+
+void KnifeHudExistingLabelSelection()
+{
+    Memory memory;
+    constexpr std::uintptr_t view = 0xA0000, rows = 0xB0000, panel = 0xC0000;
+    constexpr std::uint32_t handle = 0x180123;
+    memory.Set<std::int32_t>(view + 0x50, 3);
+    memory.Set(view + 0x58, rows);
+    for (int i = 0; i < 3; ++i) memory.Set(rows + i * 0x48, std::array<std::uint8_t, 0x48> {});
+    const auto set_row = [&](int i, std::uint32_t weapon_handle, int definition, std::uintptr_t icon)
+    {
+        memory.Set(rows + i * 0x48 + 0x38, weapon_handle);
+        memory.Set(rows + i * 0x48 + 0x3C, definition);
+        memory.Set(rows + i * 0x48 + 8, icon);
+    };
+    set_row(0, handle + 0x8000, 515, panel + 0x100);
+    set_row(1, handle, 515, panel);
+    set_row(2, 0x180234, 7, panel + 0x200);
+    const KnifeHudLabelRow expected {rows + 0x48, panel};
+    Check(FindKnifeHudLabelRow(view, handle, 515, memory) == expected,
+        "the existing knife label is selected by its full serial handle among unrelated icons");
+    Check(!FindKnifeHudLabelRow(view, handle, 507, memory), "a mismatched knife definition cannot receive the name");
+    Check(!FindKnifeHudLabelRow(view, 0x123, 515, memory), "the entity index alone must not match a HUD label");
+    set_row(2, handle, 515, panel + 0x200);
+    Check(!FindKnifeHudLabelRow(view, handle, 515, memory), "ambiguous duplicate handles must not update any icon");
+    set_row(2, 0x180234, 7, panel + 0x200);
+    memory.bytes.erase(rows + 0x47);
+    Check(!FindKnifeHudLabelRow(view, handle, 515, memory), "a torn HUD vector cannot be used for label writes");
+    memory.Set<std::uint8_t>(rows + 0x47, 0);
+    memory.Set<std::int32_t>(view + 0x50, 65);
+    Check(!FindKnifeHudLabelRow(view, handle, 515, memory), "HUD row scans are bounded");
+    memory.Set<std::int32_t>(view + 0x50, 3);
+    memory.Set<std::uintptr_t>(view + 0x58, std::numeric_limits<std::uintptr_t>::max() - 5);
+    Check(!FindKnifeHudLabelRow(view, handle, 515, memory), "HUD vector pointer overflow is rejected");
+
+    KnifeHudLabelCommit commit;
+    Check(commit.Begin(415, expected), "cache generation alone has not yet submitted the existing HUD label");
+    commit.Complete(true);
+    for (int i = 0; i < 100000; ++i)
+        Check(!commit.Begin(415, expected), "steady-state callbacks must not write the label repeatedly");
+    Check(commit.Applied(415, expected), "completion is distinct from queueing the full name");
+    const KnifeHudLabelRow recreated {rows + 0x48, panel + 0x300};
+    Check(commit.Begin(415, recreated), "a recreated HUD panel requires its name again despite the same paint");
+    commit.Complete(false);
+    Check(!commit.Applied(415, recreated) && !commit.Begin(415, recreated), "a failed native write must not loop");
+    Check(commit.Begin(420, recreated), "a new finish invalidates the previous label submission");
+    Check(!commit.Begin(0, recreated), "an empty appearance signature is never a label request");
+    commit.Complete(true);
+    commit.Reset();
+    Check(commit.Begin(420, recreated), "a removed icon may reuse its allocation when it returns");
+    std::cout << "knife_right_hud_existing_label_fixture=PASSED; native_game_calls=0\n";
+}
+
+void KnifeHudNameRefreshOrdering()
+{
+    constexpr std::uint64_t requested = 0x415, previous = 0x420;
+    Check(!KnifeHudNameMaterialReady(requested, 0, false, false),
+        "new paint fields alone cannot publish a new HUD name");
+    Check(!KnifeHudNameMaterialReady(requested, previous, true, true),
+        "a completed previous finish cannot satisfy the next name update");
+    Check(!KnifeHudNameMaterialReady(requested, requested, true, false),
+        "world-only materials cannot publish a first-person knife name");
+    Check(!KnifeHudNameMaterialReady(requested, requested, false, true),
+        "HUD readiness without its matching world material is incomplete");
+    Check(KnifeHudNameMaterialReady(requested, requested, true, true),
+        "the name can update after the matching world/HUD material transfer");
+    Check(!KnifeHudNameMaterialReady(0, 0, true, true), "an empty signature is never material evidence");
+    const auto encoded = QuoteKnifeHudNameForLog(L"\u722a\u5b50\u5200 (\u2605) | \u591a\u666e\u52d2\n\"test\"");
+    Check(encoded == L"\"\\u722a\\u5b50\\u5200 (\\u2605) | \\u591a\\u666e\\u52d2\\u000a\\\"test\\\"\"",
+        "localized before/after names must survive the logger's system encoding");
+    Check(std::all_of(encoded.begin(), encoded.end(), [](wchar_t unit) { return unit >= 0x20 && unit <= 0x7E; }),
+        "the name diagnostic must be a complete single ASCII line");
+}
+
+void InstalledBinaryEvidence()
+{
+    // Finish-only has no dependency on live model/animation construction.
+    // Validate its current PE separately so obsolete model evidence cannot
+    // hide a broken finish-only ABI behind a skipped/failed model test.
+    if (const auto* finish_client = _wgetenv(L"NSKINZCS2_KNIFE_FINISH_CLIENT_DLL"))
+        InstalledFinishBinaryEvidence(finish_client);
+    const auto* client = _wgetenv(L"NSKINZCS2_KNIFE_CLIENT_DLL");
+    const auto* animation = _wgetenv(L"NSKINZCS2_KNIFE_ANIMATION_DLL");
+    if (client == nullptr && animation == nullptr)
+    { std::cout << "knife_graph_installed_evidence=SKIPPED (set both PE paths)\n"; return; }
+    Check(client != nullptr && animation != nullptr, "both binary paths required");
+    InstalledFinishBinaryEvidence(client);
+    Memory resources;
+    constexpr std::uintptr_t image_base = 0x10000000, image_size = 0x3000000;
+    for (const auto& window : KnifeSerializationEvidenceWindows())
+    {
+        const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
+        for (std::size_t i = 0; i < bytes.size(); ++i) resources.Set(image_base + window.rva + i, bytes[i]);
+    }
+    Check(VerifyKnifeSerializationEvidence(image_base, image_size, resources), "installed recorded/local animation serialization ABI");
     for (const auto& window : KnifeNativeEvidenceWindows())
     {
         const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
@@ -1362,6 +1565,8 @@ void InstalledBinaryEvidence()
 
 void RunKnifeGraphTests()
 {
+    KnifeHudNameRefreshOrdering();
+    KnifeHudExistingLabelSelection();
     ValidAndReadOnly();
     GatesBeforeMemory();
     BoundedNodeLookup();
