@@ -3,13 +3,49 @@ use std::collections::BTreeMap;
 
 const PREFIX: &str = "m_AttributeManager.m_Item";
 const VECTOR: &str = "m_AttributeManager.m_Item.m_NetworkedDynamicAttributes.m_Attributes";
+const MESH_MASK: &str = "CBodyComponent.m_skeletonInstance.m_modelState.m_MeshGroupMask";
 const DEFINITIONS: [u16; 7] = [299, 300, 301, 302, 306, 314, 321];
 const MAX_ATTRIBUTES: usize = 4096;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct KeychainPosition {
+    modern: [f32; 3],
+    legacy: [f32; 3],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct RequestKeychain {
     pub definition_index: u16,
     pub kit_id: u32,
+    #[serde(default)]
+    pub position: Option<KeychainPosition>,
+}
+
+impl RequestKeychain {
+    pub fn validate_position(&self) -> Result<()> {
+        if let Some(position) = &self.position {
+            anyhow::ensure!(
+                self.kit_id > 0
+                    && position
+                        .modern
+                        .iter()
+                        .chain(&position.legacy)
+                        .all(|coordinate| coordinate.is_finite() && coordinate.abs() <= 128.0),
+                "invalid custom keychain position"
+            );
+        }
+        Ok(())
+    }
+
+    fn custom_position(&self, mesh_mask: u64) -> Option<[f32; 3]> {
+        self.position.as_ref().map(|position| {
+            if mesh_mask & 2 != 0 {
+                position.legacy
+            } else {
+                position.modern
+            }
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -44,7 +80,35 @@ struct Attribute {
     bits: u32,
 }
 
-fn materialize(attributes: &mut Vec<Attribute>, kit: u32, position: [f32; 3]) {
+fn has_keychain(attributes: &[Attribute]) -> bool {
+    attributes
+        .iter()
+        .any(|a| a.definition == 299 && a.bits != 0)
+}
+
+fn default_mount(definition: u16, mesh_mask: u64) -> Result<[f32; 3]> {
+    let variants = MOUNTS
+        .get(&definition)
+        .context("no model-derived keychain mount")?;
+    let mount = if mesh_mask & 2 != 0 {
+        variants.legacy.as_ref()
+    } else {
+        variants.modern.as_ref()
+    };
+    Ok(mount
+        .or(variants.modern.as_ref())
+        .or(variants.legacy.as_ref())
+        .context("no keychain mount for this weapon model")?
+        .position)
+}
+
+fn materialize(
+    attributes: &mut Vec<Attribute>,
+    kit: u32,
+    position: [f32; 3],
+    existing: bool,
+    custom: bool,
+) {
     if kit == 0 {
         // Absence is already a successful clear. Do not create an empty module
         // or inflate an originally empty vector just to encode "no keychain".
@@ -55,9 +119,6 @@ fn materialize(attributes: &mut Vec<Attribute>, kit: u32, position: [f32; 3]) {
         }
         return;
     }
-    let source_has_keychain = attributes
-        .iter()
-        .any(|a| a.definition == 299 && a.bits != 0);
     let defaults = [
         kit,
         position[0].to_bits(),
@@ -71,7 +132,7 @@ fn materialize(attributes: &mut Vec<Attribute>, kit: u32, position: [f32; 3]) {
         let mut found = false;
         for attribute in attributes.iter_mut().filter(|a| a.definition == definition) {
             found = true;
-            if definition == 299 || (!source_has_keychain && matches!(definition, 300..=302)) {
+            if definition == 299 || !existing || (custom && matches!(definition, 300..=302)) {
                 attribute.bits = bits;
             }
         }
@@ -114,29 +175,23 @@ pub fn fields(
         original.push(Attribute { definition, bits });
     }
     let mut attributes = original.clone();
-    let position = if rule.request.kit_id == 0 {
+    let existing = has_keychain(&original);
+    let mesh_mask = get(MESH_MASK).and_then(integer).unwrap_or(1);
+    let custom = rule.request.custom_position(mesh_mask);
+    let position = if let Some(position) = custom {
+        position
+    } else if rule.request.kit_id == 0 {
         [0.0; 3]
     } else {
-        let mask = get("CBodyComponent.m_skeletonInstance.m_modelState.m_MeshGroupMask")
-            .and_then(integer)
-            .unwrap_or(1);
-        let variants = MOUNTS
-            .get(&rule.request.definition_index)
-            .context("no model-derived keychain mount")?;
-        let mount = if mask & 2 != 0 {
-            variants.legacy.as_ref()
-        } else {
-            variants.modern.as_ref()
-        };
-        // Some weapons ship only one mesh variant. Do not borrow a different
-        // weapon's coordinates or substitute a zero position.
-        mount
-            .or(variants.modern.as_ref())
-            .or(variants.legacy.as_ref())
-            .context("no keychain mount for this weapon model")?
-            .position
+        default_mount(rule.request.definition_index, mesh_mask)?
     };
-    materialize(&mut attributes, rule.request.kit_id, position);
+    materialize(
+        &mut attributes,
+        rule.request.kit_id,
+        position,
+        existing,
+        custom.is_some(),
+    );
     anyhow::ensure!(
         attributes.len() <= MAX_ATTRIBUTES,
         "keychain attributes have no remaining capacity"
@@ -157,24 +212,43 @@ pub fn fields(
                 attribute.definition,
                 f32::from_bits(attribute.bits),
             );
-        } else if attribute.bits != original[index].bits {
+        } else {
+            let overridden = match rule.request.kit_id {
+                0 => matches!(attribute.definition, 299 | 321),
+                _ => {
+                    attribute.definition == 299
+                        || (!existing && DEFINITIONS.contains(&attribute.definition))
+                        || (custom.is_some() && matches!(attribute.definition, 300..=302))
+                }
+            };
+            if !overridden {
+                continue;
+            }
             let base = format!("{VECTOR}.{index:04}");
+            let initial = format!("{base}.m_flInitialValue");
+            if attribute.bits == original[index].bits
+                && get(&initial).and_then(union_u32) == Some(attribute.bits)
+            {
+                continue;
+            }
             fields.push((
                 format!("{base}.m_iRawValue32"),
                 FieldValue::Float(f32::from_bits(attribute.bits)),
             ));
-            fields.push((
-                format!("{base}.m_flInitialValue"),
-                FieldValue::Float(f32::from_bits(attribute.bits)),
-            ));
+            fields.push((initial, FieldValue::Float(f32::from_bits(attribute.bits))));
         }
     }
     if rule.request.kit_id > 0 || original.iter().any(|a| a.definition == 299) {
         // A new network identity avoids reusing the original inventory item's
         // cached cosmetics. Preserve its definition, paint, stickers and name.
-        let salt = 0x4B45_5943_4841_494E
+        let mut salt = 0x4B45_5943_4841_494E
             ^ u64::from(entity.handle())
             ^ (u64::from(rule.request.kit_id) << 32);
+        if let Some(position) = custom {
+            for coordinate in position {
+                salt = (salt ^ u64::from(coordinate.to_bits())).wrapping_mul(0x100000001b3);
+            }
+        }
         let (high, low) = fnv_identity(rule.steam, rule.request.definition_index, salt);
         for (suffix, value) in [
             ("m_iItemIDHigh", FieldValue::Unsigned32(high)),
@@ -197,6 +271,9 @@ pub fn verify(entity: &Entity, rule: &KeychainRule) -> Result<()> {
         "keychain verification vector too large"
     );
     let mut values: BTreeMap<u16, Vec<u32>> = BTreeMap::new();
+    let custom = rule
+        .request
+        .custom_position(field_integer(entity, MESH_MASK).unwrap_or(1));
     for slot in 0..count {
         let base = format!("{VECTOR}.{slot:04}");
         let Some(definition) =
@@ -209,6 +286,16 @@ pub fn verify(entity: &Entity, rule: &KeychainRule) -> Result<()> {
                 .try_get_property(&format!("{base}.m_iRawValue32"))
                 .and_then(union_u32)
                 .context("keychain verification missing raw value")?;
+            if let Some(position) = custom.filter(|_| matches!(definition, 300..=302)) {
+                let expected = position[(definition - 300) as usize].to_bits();
+                let initial = entity
+                    .try_get_property(&format!("{base}.m_flInitialValue"))
+                    .and_then(union_u32);
+                anyhow::ensure!(
+                    bits == expected && initial == Some(expected),
+                    "custom keychain position attribute {definition} did not round-trip"
+                );
+            }
             values.entry(definition as u16).or_default().push(bits);
         }
     }
@@ -274,7 +361,7 @@ mod tests {
             },
         ];
         let before = attributes.clone();
-        materialize(&mut attributes, 34, [1.0, 2.0, 3.0]);
+        materialize(&mut attributes, 34, [1.0, 2.0, 3.0], true, false);
         for (index, source) in before.iter().enumerate() {
             assert_eq!(
                 attributes[index].bits,
@@ -296,17 +383,40 @@ mod tests {
                 bits: 12,
             })
             .collect();
-        materialize(&mut attributes, 17, [4.0, 5.0, 6.0]);
+        materialize(&mut attributes, 17, [4.0, 5.0, 6.0], false, false);
         assert_eq!(attributes.len(), 107);
         assert_eq!(attributes[100].definition, 299);
         assert_eq!(attributes[100].bits, 17);
         assert_eq!(attributes[101].bits, 4.0f32.to_bits());
-        materialize(&mut attributes, 0, [0.0; 3]);
+        materialize(&mut attributes, 0, [0.0; 3], true, false);
         assert_eq!(attributes.len(), 107);
         assert_eq!(attributes[100].bits, 0);
         let mut empty = Vec::new();
-        materialize(&mut empty, 0, [0.0; 3]);
+        materialize(&mut empty, 0, [0.0; 3], false, false);
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn creation_reinitializes_a_vacant_slot_with_stale_values() {
+        let mut attributes: Vec<_> = DEFINITIONS
+            .into_iter()
+            .zip([0, 42, 43, 44, 120, 1, 76])
+            .map(|(definition, bits)| Attribute { definition, bits })
+            .collect();
+        assert!(!has_keychain(&attributes));
+        materialize(&mut attributes, 17, [4.0, 5.0, 6.0], false, false);
+        assert_eq!(
+            attributes.iter().map(|a| a.bits).collect::<Vec<_>>(),
+            [
+                17,
+                4.0f32.to_bits(),
+                5.0f32.to_bits(),
+                6.0f32.to_bits(),
+                0,
+                0,
+                0
+            ]
+        );
     }
 
     #[test]
@@ -391,6 +501,7 @@ mod tests {
                             .map(|definition| RequestKeychain {
                                 definition_index: *definition,
                                 kit_id: 17,
+                                position: None,
                             })
                             .collect(),
                     })
@@ -430,11 +541,30 @@ mod tests {
                     verify(after, rule).unwrap();
                     let original = read_attributes(before);
                     let actual = read_attributes(after);
-                    let existing = original.iter().any(|a| a.definition == 299 && a.bits != 0);
+                    let existing = has_keychain(&original);
                     if existing {
                         source_existing += 1;
                     } else {
                         source_absent += 1;
+                        let position = default_mount(
+                            rule.request.definition_index,
+                            field_integer(before, MESH_MASK).unwrap_or(1),
+                        )
+                        .unwrap();
+                        let expected = [
+                            rule.request.kit_id,
+                            position[0].to_bits(),
+                            position[1].to_bits(),
+                            position[2].to_bits(),
+                            0,
+                            0,
+                            0,
+                        ];
+                        for (definition, bits) in DEFINITIONS.into_iter().zip(expected) {
+                            assert!(actual.contains(&Attribute { definition, bits }),
+                                "default mount mismatch at tick {tick}, handle {}, attribute {definition}",
+                                before.handle());
+                        }
                     }
                     for attribute in &original {
                         if attribute.definition == 299

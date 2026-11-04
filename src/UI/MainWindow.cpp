@@ -8,6 +8,7 @@
 #include "Runtime/WorkshopMaps.hpp"
 #include "UI/ExternalUiHost.hpp"
 #include "UI/StickerPreviewMetrics.hpp"
+#include "UI/KeychainPreview.hpp"
 #include "UI/StickerPreviewPlacement.generated.hpp"
 #include "UI/UiText.hpp"
 #include "UI/WeaponPreviewGeometry.generated.hpp"
@@ -50,6 +51,7 @@ bool CompleteUiPreviewCapture(ID3D11Device*, ID3D11DeviceContext*, IDXGISwapChai
 bool UiPreviewFailOnce(const char* phase);
 bool UiPreviewRetryAfterFailure();
 bool UiPreviewDocumentationCapture();
+bool UiPreviewKeychainCapture();
 #endif
 
 namespace
@@ -245,6 +247,26 @@ struct StickerWeaponPreviewBounds
     const nskinzcs2::ui::weapon_preview::Model* model = nullptr;
     const nskinzcs2::ui::sticker_preview::WeaponLayout* placement_layout = nullptr;
 };
+
+void DrawPlacementCanvasBackground(ImDrawList* draw, const ImVec2 origin, const ImVec2 size)
+{
+    const ImVec2 end(origin.x + size.x, origin.y + size.y);
+    draw->AddRectFilledMultiColor(
+        origin, end, IM_COL32(34, 38, 45, 255), IM_COL32(29, 33, 40, 255),
+        IM_COL32(22, 25, 31, 255), IM_COL32(27, 30, 36, 255));
+    draw->AddRect(origin, end, IM_COL32(105, 112, 122, 255));
+    for (int division = 1; division < 5; ++division)
+    {
+        const auto x = origin.x + size.x * static_cast<float>(division) / 5.0f;
+        draw->AddLine(ImVec2(x, origin.y + 28.0f), ImVec2(x, end.y - 34.0f),
+            IM_COL32(53, 58, 66, 150));
+    }
+    for (int division = 1; division < 4; ++division)
+    {
+        const auto y = origin.y + 28.0f + (size.y - 62.0f) * static_cast<float>(division) / 4.0f;
+        draw->AddLine(ImVec2(origin.x, y), ImVec2(end.x, y), IM_COL32(53, 58, 66, 150));
+    }
+}
 
 StickerWeaponPreviewBounds ResolveStickerWeaponPreviewBounds(
     const ImVec2 minimum,
@@ -1779,13 +1801,21 @@ private:
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem(Ui(UiTextId::TabKeychains)))
+            ImGuiTabItemFlags keychain_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewKeychainCapture())
+            {
+                keychain_tab_flags = ImGuiTabItemFlags_SetSelected;
+            }
+#endif
+            if (ImGui::BeginTabItem(Ui(UiTextId::TabKeychains), nullptr, keychain_tab_flags))
             {
                 ImGui::Columns(2, nullptr, false);
                 DrawKeychainProfileList(catalog);
                 ImGui::NextColumn();
                 DrawKeychainProfileEditor(catalog);
                 ImGui::Columns(1);
+                DrawKeychainPlacementPreview(catalog);
                 ImGui::EndTabItem();
             }
 
@@ -2451,7 +2481,7 @@ private:
     {
         auto& keychain_profiles = working_config_.keychain_profiles;
 
-        ImGui::BeginChild("KeychainProfiles", ImVec2(0.0f, 260.0f), true);
+        ImGui::BeginChild("KeychainProfiles", ImVec2(0.0f, 170.0f), true);
         for (int index = 0; index < static_cast<int>(keychain_profiles.size()); ++index)
         {
             std::string label = keychain_profiles[index].name;
@@ -2514,6 +2544,7 @@ private:
 
         if (ComboById(Ui(UiTextId::Weapon), cached_visible_weapon_items_, profile.base_item, 8))
         {
+            profile.custom_position = false;
             PushWorkingConfig();
         }
 
@@ -2537,6 +2568,117 @@ private:
 
         ImGui::Spacing();
         ImGui::TextWrapped("%s", Ui(UiTextId::KeychainRuntimeDescription));
+    }
+
+    void DrawKeychainPlacementPreview(const Catalog& catalog)
+    {
+        using namespace nskinzcs2::ui::keychain_preview;
+        auto& profile = CurrentKeychainProfile();
+        if (profile.keychain_kit <= 0 || profile.explicit_clear)
+        {
+            return;
+        }
+        ImGui::Separator();
+        ImGui::TextUnformatted(Ui(UiTextId::KeychainPlacementPreview));
+        ImGui::Checkbox(Ui(UiTextId::KeychainPreviewLegacy), &keychain_preview_legacy_);
+        const auto* layout = FindMountLayout(profile.base_item, keychain_preview_legacy_);
+        if (layout == nullptr)
+        {
+            return;
+        }
+
+        bool changed = ImGui::Checkbox(Ui(UiTextId::KeychainCustomPosition), &profile.custom_position);
+        if (changed && profile.custom_position)
+        {
+            profile.preview_position = {layout->anchor.x, layout->anchor.y};
+        }
+        if (profile.custom_position)
+        {
+            ImGui::SetNextItemWidth(std::min(420.0f, ImGui::GetContentRegionAvail().x * 0.55f));
+            changed |= ImGui::SliderFloat2(Ui(UiTextId::KeychainPreviewCoordinates),
+                profile.preview_position.data(), 0.0f, 1.0f, "%.4f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SameLine();
+            if (ImGui::Button(Ui(UiTextId::KeychainResetPlacement)))
+            {
+                profile.custom_position = false;
+                changed = true;
+            }
+        }
+
+        const float width = std::max(120.0f, ImGui::GetContentRegionAvail().x);
+        const ImVec2 size(width, std::clamp(width * 0.38f, 220.0f, 245.0f));
+        const auto origin = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##keychain_placement_canvas", size);
+        const auto bounds = ResolveStickerWeaponPreviewBounds(
+            ImVec2(origin.x + 10.0f, origin.y + 30.0f),
+            ImVec2(origin.x + size.x - 10.0f, origin.y + size.y - 36.0f),
+            profile.base_item, keychain_preview_legacy_);
+        const float model_width = bounds.maximum.x - bounds.minimum.x;
+        const float model_height = bounds.maximum.y - bounds.minimum.y;
+        const auto to_canvas = [&](const PreviewPoint point)
+        {
+            return ImVec2(bounds.minimum.x + point.x * model_width,
+                bounds.minimum.y + point.y * model_height);
+        };
+        auto point = layout->anchor;
+        if (profile.custom_position)
+        {
+            point = ResolveMountPoint(*layout, {profile.preview_position[0], profile.preview_position[1]}).screen;
+        }
+        if (profile.custom_position && ImGui::IsItemActivated())
+        {
+            const auto mouse = ImGui::GetIO().MousePos;
+            const auto marker = to_canvas(point);
+            const ImVec2 offset(mouse.x - marker.x, mouse.y - marker.y);
+            keychain_drag_offset_ = std::abs(offset.x) <= 11.0f && offset.y >= -7.0f && offset.y <= 25.0f
+                ? offset : ImVec2();
+        }
+        if (profile.custom_position && ImGui::IsItemActive() &&
+            ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
+        {
+            const auto mouse = ImGui::GetIO().MousePos;
+            const std::array target {
+                std::clamp((mouse.x - keychain_drag_offset_.x - bounds.minimum.x) / model_width, 0.0f, 1.0f),
+                std::clamp((mouse.y - keychain_drag_offset_.y - bounds.minimum.y) / model_height, 0.0f, 1.0f),
+            };
+            if (profile.preview_position != target)
+            {
+                profile.preview_position = target;
+                point = ResolveMountPoint(*layout, {target[0], target[1]}).screen;
+                changed = true;
+            }
+        }
+
+        auto* draw = ImGui::GetWindowDrawList();
+        DrawPlacementCanvasBackground(draw, origin, size);
+        DrawStickerWeaponPreviewSilhouette(draw, bounds);
+        draw->PushClipRect(origin, ImVec2(origin.x + size.x, origin.y + size.y), true);
+        const auto title = LookupName(catalog.base_items, profile.base_item);
+        draw->AddText(ImVec2(origin.x + 9.0f, origin.y + 7.0f), IM_COL32(235, 238, 243, 255), title.c_str());
+        if (profile.custom_position)
+        {
+            for (std::size_t index = layout->first; index < layout->first + layout->count; ++index)
+            {
+                const auto& region = kMountTriangles[index];
+                draw->AddTriangleFilled(to_canvas(region.screen[0]), to_canvas(region.screen[1]),
+                    to_canvas(region.screen[2]), IM_COL32(57, 142, 232, 36));
+            }
+            draw->AddCircle(to_canvas(layout->anchor), 4.0f, IM_COL32(167, 180, 197, 220));
+        }
+        const auto anchor = to_canvas(point);
+        const ImU32 blue = IM_COL32(63, 153, 255, 255);
+        draw->AddCircle(anchor, 4.5f, blue, 16, 2.0f);
+        draw->AddLine(ImVec2(anchor.x, anchor.y + 4.0f), ImVec2(anchor.x, anchor.y + 9.0f), blue, 2.0f);
+        const ImVec2 body_min(anchor.x - 7.0f, anchor.y + 8.0f);
+        const ImVec2 body_max(anchor.x + 7.0f, anchor.y + 22.0f);
+        draw->AddRectFilled(body_min, body_max, blue, 4.0f);
+        draw->AddRect(body_min, body_max, IM_COL32(168, 219, 255, 255), 4.0f);
+        draw->PopClipRect();
+        ImGui::TextWrapped("%s", Ui(UiTextId::KeychainPlacementHelp));
+        if (changed)
+        {
+            PushWorkingConfig();
+        }
     }
 
     void RefreshWorkshopMaps()
@@ -3229,31 +3371,7 @@ private:
         }
 
         auto* draw = ImGui::GetWindowDrawList();
-        draw->AddRectFilledMultiColor(
-            origin,
-            canvas_max,
-            IM_COL32(34, 38, 45, 255),
-            IM_COL32(29, 33, 40, 255),
-            IM_COL32(22, 25, 31, 255),
-            IM_COL32(27, 30, 36, 255));
-        draw->AddRect(origin, canvas_max, IM_COL32(105, 112, 122, 255));
-        for (int division = 1; division < 5; ++division)
-        {
-            const auto x = origin.x + canvas_size.x * static_cast<float>(division) / 5.0f;
-            draw->AddLine(
-                ImVec2(x, origin.y + 28.0f),
-                ImVec2(x, canvas_max.y - 34.0f),
-                IM_COL32(53, 58, 66, 150));
-        }
-        for (int division = 1; division < 4; ++division)
-        {
-            const auto y = origin.y + 28.0f + (canvas_size.y - 62.0f) *
-                static_cast<float>(division) / 4.0f;
-            draw->AddLine(
-                ImVec2(origin.x, y),
-                ImVec2(canvas_max.x, y),
-                IM_COL32(53, 58, 66, 150));
-        }
+        DrawPlacementCanvasBackground(draw, origin, canvas_size);
 
         DrawStickerWeaponPreviewSilhouette(draw, preview_bounds);
 
@@ -3991,6 +4109,8 @@ private:
     int selected_workshop_map_ = -1;
     int selected_weapon_sticker_ = 0;
     bool sticker_live_preview_enabled_ = true;
+    bool keychain_preview_legacy_ = false;
+    ImVec2 keychain_drag_offset_ {};
     bool sticker_live_preview_pending_ = false;
     bool sticker_preview_dragging_ = false;
     std::chrono::steady_clock::time_point sticker_live_preview_due_ {};

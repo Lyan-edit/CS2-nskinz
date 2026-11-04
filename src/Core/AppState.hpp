@@ -141,6 +141,8 @@ struct KeychainProfile
     int base_item = 7;
     int keychain_kit = 0;
     bool explicit_clear = false;
+    bool custom_position = false;
+    std::array<float, 2> preview_position {0.5f, 0.5f};
 };
 
 struct DemoMirvPlayerEntry

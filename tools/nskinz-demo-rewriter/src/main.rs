@@ -800,6 +800,7 @@ fn parse_plans(request: &Request) -> Result<HashMap<u64, PlayerPlan>> {
         }
         let plan = result.entry(steam).or_default();
         for keychain in &pass.keychains {
+            keychain.validate_position()?;
             if !keychains::supported_definition(keychain.definition_index) {
                 bail!("unsupported keychain weapon definition {}", keychain.definition_index);
             }
@@ -1374,8 +1375,8 @@ fn build_rewrite_plan(
                 let Some(weapon) = discovery.weapons.get(handle) else { continue; };
                 let Some(request) = player_plan.keychains.get(&weapon.definition) else { continue; };
                 if let Some(previous) = keychain_weapons.get(handle) {
-                    if previous.request.kit_id != request.kit_id {
-                        bail!("conflicting keychain requests for shared weapon handle {handle}: {} versus {}", previous.request.kit_id, request.kit_id);
+                    if previous.request != *request {
+                        bail!("conflicting keychain kit or position for shared weapon handle {handle}");
                     }
                 }
                 keychain_weapons.insert(*handle, KeychainRule { steam: *steam, request: request.clone() });

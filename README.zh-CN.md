@@ -1,4 +1,4 @@
-[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.6.4)](./docs/assets/nskinz-banner.svg?v=0.6.4)
+[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.7.0)](./docs/assets/nskinz-banner.svg?v=0.7.0)
 
 <h3 align="center">面向 HLAE Demo 回放的 Counter-Strike 2 离线外观工具</h3>
 
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.6.4"><img src="https://img.shields.io/github/v/release/Lyan-edit/CS2-nskinz?style=flat-square&label=release" alt="最新版本"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.0"><img src="https://img.shields.io/github/v/release/Lyan-edit/CS2-nskinz?style=flat-square&label=release" alt="最新版本"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/releases"><img src="https://img.shields.io/github/downloads/Lyan-edit/CS2-nskinz/total?style=flat-square&label=下载量" alt="下载量"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz"><img src="https://img.shields.io/github/stars/Lyan-edit/CS2-nskinz?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/network/members"><img src="https://img.shields.io/github/forks/Lyan-edit/CS2-nskinz?style=flat-square" alt="Forks"></a>
@@ -21,13 +21,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.6.4/Lyan_nskinz-v0.6.4-EN.dll"><img src="https://img.shields.io/badge/下载-英文%20DLL-2ea043?style=for-the-badge" alt="下载英文 DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.6.4/Lyan_nskinz-v0.6.4-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="下载中文 DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.6.4"><img src="https://img.shields.io/badge/正式版-v0.6.4-8250df?style=for-the-badge" alt="v0.6.4 发布说明"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.0/Lyan_nskinz-v0.7.0-EN.dll"><img src="https://img.shields.io/badge/下载-英文%20DLL-2ea043?style=for-the-badge" alt="下载英文 DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.0/Lyan_nskinz-v0.7.0-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="下载中文 DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/正式版-v0.7.0-8250df?style=for-the-badge" alt="v0.7.0 发布说明"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/issues/new/choose"><img src="https://img.shields.io/badge/提交问题-f85149?style=for-the-badge" alt="提交问题"></a>
 </p>
 
 > **安全提示：** nSkinzCS2 只用于通过 HLAE、带 `-insecure` 启动的离线 Demo 回放。请勿加载到 VAC 保护服务器或任何联机服务器。超出此范围使用造成的账号风险由使用者自行承担。
+
+## v0.7.0 更新
+
+「挂件」页新增自定义挂件位置预览，沿用贴纸画布。拖动蓝色标记或调整 X/Y 滑轨后，重新生成临时 Demo 即可应用到游戏。自动模式保留已有挂点，新增挂件使用枪模默认挂点。详见 [v0.7.0 发布说明](docs/releases/v0.7.0.md)。
 
 ## v0.6.4 更新
 
@@ -148,46 +152,46 @@ v0.4.1 发布时通过 **42 项原生回归测试**。网格函数 240 次更新
 
 nSkinzCS2 是一个 Windows x64 DLL，用于在观看 Counter-Strike 2 Demo 时修改当前观战玩家的外观。它通过 HLAE 的 `mirv_loadlibrary` 加载，读取本机 CS2 目录中的物品目录，并通过 Win32 + D3D11 + Dear ImGui 控制面板，按玩家 XUID 安全地应用外观覆盖。
 
-![nSkinzCS2 控制面板](./docs/assets/control-panel.png?v=0.6.4)
+![nSkinzCS2 控制面板](./docs/assets/control-panel.png?v=0.7.0)
 
 当前真实 UI 渲染，使用示例配置，未连接游戏进程。[截图记录](docs/assets/control-panel.capture.json)。
 
 ## 功能矩阵
 
-| 模块 | v0.6.4 支持情况 | 说明 |
+| 模块 | v0.7.0 支持情况 | 说明 |
 | --- | --- | --- |
 | 枪械 | 按枪型筛选的涂装、种子、磨损、品质、名称标签及贴纸替换／创建 | 临时 Demo 可更新原皮和已有涂装枪械。已有贴纸保留变换／自由摆放数据；请求的缺失逻辑槽会创建到武器原生预设位置。运行时及导入配置仍会校验兼容性。 |
 | 刀 | 饰面、种子和磨损；实验性饰面＋模型替换 | 仅饰面隐藏模型选项；模型/切刀/检视替换已接入，但首次重建、拾取刀和 HUD 交接仍属实验功能。 |
 | 手套 | T/CT 手套载体、手套模型和涂装 | 已有涂装属性原位覆盖；默认及生成 Demo 的手套在播放前重建，运行时保持只读。 |
 | 临时换肤 Demo | 一键生成并加载包含刀、枪械、手套、贴纸及挂件变更且经过验证的第二个 `.dem` | 由 DLL 内嵌的开源 nSkinz 重写器实现；可为缺失贴纸槽扩展枪械 Econ 属性向量。绝不覆盖原 Demo，输出会在加载前重新解析。 |
 | 创意工坊地图 | 自动识别已安装订阅；在 Demo 第二次加载时替换地图并抑制可安全识别的原地图生成模型 | 已纳入本正式版；不改写 `.dem` 或创意工坊文件。已烘焙几何体在无安全替代时可能残留。 |
-| 挂件 | 临时 Demo 重建替换、新增和清除 | 保留已有位置和 seed；缺失挂件采用模型默认区域。关闭实时修改，最终画面仍需实机验收。 |
+| 挂件 | 临时 Demo 重建替换、新增和清除 | 蓝色标记与 X/Y 滑轨实时预览位置。自动模式保留已有挂点和 seed，新增挂件使用枪模默认挂点。 |
 | 原皮 / 无涂装 | 独立的 `原皮（无涂装）` 选项 | 与 `-（不修改）` 不同；部分 Demo 刀的第一人称旧材质可能残留。 |
 | 语言 | 英文和简体中文 DLL | 中文版从本机 `csgo_schinese.txt` 读取名称。 |
 
 ## 快速开始
 
-v0.6.4 已内嵌预编译面板着色器、独立 Demo 重写器、19 种已复查雷达参考图（含锁定的 Inferno Water 标准）并保留 `/MT`。除 Windows 10/11 x64、CS2 和 HLAE 外不需要其它运行库。`LoadLibrary failed` 排查见[单 DLL 加载说明](docs/portable-loading.md)。
+v0.7.0 已内嵌预编译面板着色器、独立 Demo 重写器、19 种已复查雷达参考图（含锁定的 Inferno Water 标准）并保留 `/MT`。除 Windows 10/11 x64、CS2 和 HLAE 外不需要其它运行库。`LoadLibrary failed` 排查见[单 DLL 加载说明](docs/portable-loading.md)。
 
 1. 使用 HLAE、带 `-insecure` 启动 CS2，然后打开离线 Demo。
 2. 下载一个 Release DLL。发布版使用 MSVC 静态运行库（`/MT`），不需要另装 Visual C++ Redistributable、Python、SDK 或 Visual Studio。
 3. 在 HLAE 中加载 DLL：
 
 ```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.6.4-zh-CN.dll"
+mirv_loadlibrary "D:\Lyan_nskinz-v0.7.0-zh-CN.dll"
 ```
 
 英文版：
 
 ```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.6.4-EN.dll"
+mirv_loadlibrary "D:\Lyan_nskinz-v0.7.0-EN.dll"
 ```
 
 上述示例要求 DLL 位于 D 盘根目录，请改成实际完整路径。ZIP 内 DLL 文件名包含空格，加载时必须使用一对英文半角双引号；不要叠加两对引号或使用中文弯引号。
 
 按 `Insert` 显示面板，选择观战玩家 XUID 和外观配置，点击“更新”（`Update`）。请把 DLL 放在可写文件夹，独立面板与运行时需要在此生成和共享目录/配置文件。运行日志为 `nSkinzCS2.log`，面板日志为 `nSkinzCS2.ui.log`。
 
-升级时请重启 HLAE/CS2，只加载**一个语言版本**的 DLL；先备份旧配置，不要在旧 DLL 已加载时叠加注入新版。[Windows x64 发布包](https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.6.4/Lyan_nskinz-v0.6.4-CS2-2000940-windows-x64.zip)含中英文 DLL、游戏版本、许可证／声明与加载说明。
+升级时请重启 HLAE/CS2，只加载**一个语言版本**的 DLL；先备份旧配置，不要在旧 DLL 已加载时叠加注入新版。[Windows x64 发布包](https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.0/Lyan_nskinz-v0.7.0-CS2-2000940-windows-x64.zip)含中英文 DLL、游戏版本、许可证／声明与加载说明。
 
 ## 创意工坊地图与模型替换
 
@@ -239,7 +243,7 @@ CS2 更新可能改变内存布局。DLL 会记录检测到的版本，并在签
 生成解决方案
 ```
 
-输出文件为 `build/Release/Lyan_nskinz v0.6.4 EN.dll`、`build/Release/Lyan_nskinz v0.6.4 zh-CN.dll` 和 `build/Release/nSkinzCS2.Tests.exe`。`run-build-and-tests.cmd` 会构建并运行原生回归测试，`run-tests.cmd` 只运行现有测试程序。
+输出文件为 `build/Release/Lyan_nskinz v0.7.0 EN.dll`、`build/Release/Lyan_nskinz v0.7.0 zh-CN.dll` 和 `build/Release/nSkinzCS2.Tests.exe`。`run-build-and-tests.cmd` 会构建并运行原生回归测试，`run-tests.cmd` 只运行现有测试程序。
 
 </details>
 
@@ -281,7 +285,7 @@ CS2 更新可能改变内存布局。DLL 会记录检测到的版本，并在签
 
 **为什么刀上仍有旧材质？** 部分 Demo 物品带有编译后的第一人称材质，当前 v0.4.5 原皮路径无法保证全部清除，详见上面的已知限制。
 
-**应该下载哪个 DLL？** 单独下载时，英文界面使用 `Lyan_nskinz-v0.6.4-EN.dll`，中文界面和中文目录名称使用 `Lyan_nskinz-v0.6.4-zh-CN.dll`；双语 ZIP 内保留带空格编译文件名。两者兼容同一套 CS2 基线。
+**应该下载哪个 DLL？** 单独下载时，英文界面使用 `Lyan_nskinz-v0.7.0-EN.dll`，中文界面和中文目录名称使用 `Lyan_nskinz-v0.7.0-zh-CN.dll`；双语 ZIP 内保留带空格编译文件名。两者兼容同一套 CS2 基线。
 
 **仓库能打开，但图片显示破图标怎么办？** 某些网络无法访问 GitHub 的 raw 图片域名。本 README 已使用 GitHub 推荐的相对图片路径；如果仍然加载失败，可临时用管理员身份打开记事本，编辑 `C:\Windows\System32\drivers\etc\hosts`，追加：
 
@@ -307,7 +311,7 @@ CS2 更新可能改变内存布局。DLL 会记录检测到的版本，并在签
 
 ## 致谢与授权说明
 
-nSkinzCS2 v0.6.4 以 [`AGPL-3.0-only`](LICENSE) 发布。地图更换实现移植并核对自 [MulNX_CS2](https://github.com/Co1Swet/MulNX_CS2) 提交 `361008b208326d9e7916ff2cd58dd57a0492c400`，并从 `f2466e18e26a8fc3daf4ac7945bc45220ba95993` 同步当前 CS2 的 GameSession 兼容变更；本项目不使用 MulNX 文件改写器。发布附件同时提供 DLL 对应的完整源码。再分发或修改时必须保留 [`NOTICE.md`](NOTICE.md)、AGPL 许可证、源码提供义务和 `third_party/` 内各组件声明。
+nSkinzCS2 v0.7.0 以 [`AGPL-3.0-only`](LICENSE) 发布。地图更换实现移植并核对自 [MulNX_CS2](https://github.com/Co1Swet/MulNX_CS2) 提交 `361008b208326d9e7916ff2cd58dd57a0492c400`，并从 `f2466e18e26a8fc3daf4ac7945bc45220ba95993` 同步当前 CS2 的 GameSession 兼容变更；本项目不使用 MulNX 文件改写器。发布附件同时提供 DLL 对应的完整源码。再分发或修改时必须保留 [`NOTICE.md`](NOTICE.md)、AGPL 许可证、源码提供义务和 `third_party/` 内各组件声明。
 
 临时换肤 Demo 由 nSkinz 自有代码和随源码提供的开源 `source2-demo` 解析／写入器实现。其 MIT／Apache-2.0 声明和源码位于 `third_party/source2-demo`，并记录在 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 

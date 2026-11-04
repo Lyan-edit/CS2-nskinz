@@ -69,10 +69,21 @@ void RunDemoSkinRewriteTests()
         "keychain-only requests must preserve unrequested paint, name and sticker state");
     Check(json::parse(charm_plan.passes[0].keychain_json.at(0)).at("kit_id") == 17,
         "keychain IDs must be serialized as integers");
+    Check(!json::parse(charm_plan.passes[0].keychain_json.at(0)).contains("position"),
+        "older keychain profiles must keep automatic placement");
+    keychain_only.keychain_profiles[0].custom_position = true;
+    keychain_only.keychain_profiles[0].preview_position = {0.46f, 0.40f};
+    const auto custom_plan = runtime::BuildDefaultDemoSkinRewritePlan(keychain_only);
+    const auto position = json::parse(custom_plan.passes[0].keychain_json.at(0)).at("position");
+    Check(position.at("modern").size() == 3 && position.at("legacy").size() == 3 &&
+        position.at("modern") != position.at("legacy"),
+        "custom keychain preview must serialize coordinates for both model variants");
     keychain_only.keychain_profiles[0].explicit_clear = true;
     const auto clear_plan = runtime::BuildDefaultDemoSkinRewritePlan(keychain_only);
     Check(json::parse(clear_plan.passes[0].keychain_json.at(0)).at("kit_id") == 0,
         "explicit keychain clear must override a stale selected kit");
+    Check(!json::parse(clear_plan.passes[0].keychain_json.at(0)).contains("position"),
+        "removing a keychain must not send stale placement coordinates");
     keychain_only.keychain_profiles[0].explicit_clear = false;
     keychain_only.keychain_profiles[0].keychain_kit = 0;
     Check(runtime::BuildDefaultDemoSkinRewritePlan(keychain_only).passes.empty(),

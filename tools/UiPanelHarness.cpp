@@ -28,6 +28,7 @@ std::atomic_bool capture_succeeded {false};
 std::string_view fault_phase;
 std::atomic_bool fault_triggered {false}, retry_triggered {false};
 bool documentation_capture = false;
+bool keychain_capture = false;
 
 bool SaveFrame(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
@@ -88,6 +89,11 @@ bool UiPreviewDocumentationCapture()
     return documentation_capture;
 }
 
+bool UiPreviewKeychainCapture()
+{
+    return keychain_capture;
+}
+
 bool CompleteUiPreviewCapture(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
     static int frames = 0;
@@ -102,6 +108,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
 {
     const std::wstring_view arguments(command_line != nullptr ? command_line : L"");
     documentation_capture = arguments.find(L"--documentation") != std::wstring_view::npos;
+    keychain_capture = arguments.find(L"--keychain") != std::wstring_view::npos;
     if (arguments.find(L"--fail-construction-once") != std::wstring_view::npos) fault_phase = "construction";
     if (arguments.find(L"--fail-resources-once") != std::wstring_view::npos) fault_phase = "resources";
     if (arguments.find(L"--fail-device-once") != std::wstring_view::npos) fault_phase = "resources-return";
@@ -110,7 +117,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (length == 0 || length >= image.size()) return 1;
     image.resize(length);
     const auto directory = std::filesystem::path(image).parent_path();
-    capture_path = directory / L"control-panel.png";
+    capture_path = directory / (keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
     nskinzcs2::Logger::Initialize(directory.wstring(), L"nSkinzCS2.preview.log");
     nskinzcs2::AppState state;
     const auto catalog = nskinzcs2::CatalogStore::Load(directory / L"nSkinzCS2.catalog.json");
@@ -122,6 +129,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     config.profiles[0].wear = 0.02f;
     for (auto& sticker : config.profiles[0].stickers) sticker.kit_id = 76;
     if (documentation_capture) config.profiles[0].stickers[0].custom_position = true;
+    if (keychain_capture)
+    {
+        auto& profile = config.keychain_profiles[0];
+        profile.name = "AK-47";
+        profile.keychain_kit = 17;
+        profile.custom_position = true;
+        profile.preview_position = {0.46f, 0.40f};
+    }
     state.ReplaceConfig(config);
     nskinzcs2::runtime::Status status;
     status.availability = nskinzcs2::runtime::Availability::Ready;

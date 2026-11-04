@@ -5,6 +5,7 @@
 #include "Core/StickerPlacement.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Resources/ResourceIds.h"
+#include "UI/KeychainPreview.hpp"
 #include "json.hpp"
 
 #include <Windows.h>
@@ -1015,10 +1016,31 @@ DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
         pass.xuid = profile.xuid;
         // Keep keychain-only intent separate. It must not synthesize a paint,
         // quality, custom name or sticker request for the same firearm.
-        pass.keychain_json.push_back(json {
+        json keychain {
             {"definition_index", profile.base_item},
             {"kit_id", profile.explicit_clear ? 0 : profile.keychain_kit},
-        }.dump());
+        };
+        if (profile.custom_position && !profile.explicit_clear)
+        {
+            using namespace ui::keychain_preview;
+            const auto* modern = FindMountLayout(profile.base_item, false);
+            const auto* legacy = FindMountLayout(profile.base_item, true);
+            const auto& position = profile.preview_position;
+            if (!modern || !legacy || !std::isfinite(position[0]) || !std::isfinite(position[1]))
+            {
+                result.validation_issue = L"The selected keychain position has no valid model projection.";
+                return result;
+            }
+            const PreviewPoint target {
+                std::clamp(position[0], 0.0f, 1.0f),
+                std::clamp(position[1], 0.0f, 1.0f),
+            };
+            keychain["position"] = {
+                {"modern", ResolveMountPoint(*modern, target).position},
+                {"legacy", ResolveMountPoint(*legacy, target).position},
+            };
+        }
+        pass.keychain_json.push_back(keychain.dump());
         ++result.keychain_item_count;
     }
 

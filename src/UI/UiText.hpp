@@ -213,6 +213,12 @@ enum class UiTextId : std::size_t
     ItemQualityHelp,
     GloveQualityHelp,
     MapRadarReferenceLocked,
+    KeychainPlacementPreview,
+    KeychainCustomPosition,
+    KeychainPreviewLegacy,
+    KeychainPreviewCoordinates,
+    KeychainResetPlacement,
+    KeychainPlacementHelp,
     Count,
 };
 
@@ -334,7 +340,7 @@ inline constexpr UiTextTable kEnglishTexts {
     "Keychain profile XUID does not match the probed watched player.",
     "Current XUID probe is %llu (weapon-owner corrected; raw watched probe %llu), but this keychain slot targets %llu.",
     "No Keychain (Remove) clears the matched weapon in a newly rebuilt Temporary Demo. The dash entry leaves it unchanged.",
-    "Keychains use Temporary Demo reconstruction only. Set XUID + Weapon + Keychain, then Generate and Load Temporary Demo. Existing placement/seed are preserved; missing keychains start at the model's default region. Update alone does not change a live keychain.",
+    "Set XUID, weapon and keychain, then generate a Temporary Demo. Automatic placement preserves an existing mount and uses the model's default for a new keychain.",
     "Use Current Demo Weapon",
     "Apply to Current Demo Weapon",
     "Clear Current Demo Weapon",
@@ -425,6 +431,12 @@ inline constexpr UiTextTable kEnglishTexts {
     "Controls the economy item's quality marker, not texture quality or wear. The field is written and verified by the live/rewrite paths. Some values have no visible effect for a particular item. StatTrak counters use the separate StatTrak setting.",
     "Controls the glove economy item's quality marker, not texture quality or wear. For a painted glove, Default (0) is automatically written as Unusual (3), which is required by the default-glove reconstruction path. Other selected values are retained; many do not change the glove's appearance.",
     "Saved transparent radar standard: road contours and matte cleanup are fixed. The background opacity remains independently adjustable.",
+    "Keychain placement preview",
+    "Custom keychain position",
+    "Preview legacy model",
+    "Preview position X / Y",
+    "Restore automatic placement",
+    "Automatic mode shows the model's default mount. Enable custom placement, then drag the blue keychain or move the sliders. Generate a new Temporary Demo to apply the position in CS2.",
 };
 
 inline constexpr UiTextTable kChineseTexts {
@@ -541,7 +553,7 @@ inline constexpr UiTextTable kChineseTexts {
     "当前挂件配置的 XUID 与探测到的观察目标不一致。",
     "当前探测到的 XUID 是 %llu（已按武器拥有者修正，原始观察值为 %llu），但这个挂件槽位目标是 %llu。",
     "“无挂件（移除）”会在新生成的临时 Demo 中清除目标挂件；“-（不修改）”保留现状。",
-    "挂件仅走临时 Demo 重建：设置 XUID、武器和挂件后，点击“生成并加载临时 Demo”。已有挂件保留位置与 seed，新增挂件从模型默认区域开始；只点更新不会实时更换挂件。",
+    "设置 XUID、武器和挂件后，生成临时 Demo。自动模式保留已有挂点，并为新增挂件使用枪模默认挂点。",
     "使用当前 Demo 武器",
     "应用到当前 Demo 武器",
     "清除当前 Demo 武器挂件",
@@ -632,6 +644,12 @@ inline constexpr UiTextTable kChineseTexts {
     "修改经济物品的品质标记，与贴图清晰度、画质和磨损无关。实时替换和重建路径会写入并校验此字段；部分值在特定物品上没有可见差异。StatTrak 计数由独立的 StatTrak 选项控制。",
     "修改手套经济物品的品质标记，与画质、磨损无关。带涂装的手套选择默认（0）时会自动写入特殊（3），默认手套重建需要这一转换。其它所选值会保留，但很多值不会改变手套外观。",
     "已使用保存的透明雷达标准，道路轮廓和暗底清理已固定；背景不透明度仍可单独调整。",
+    "挂件位置预览",
+    "自定义挂件位置",
+    "预览旧版枪模",
+    "预览位置 X / Y",
+    "恢复自动挂点",
+    "自动模式展示枪模默认挂点。启用自定义后，可拖动蓝色挂件或调整滑轨。重新生成临时 Demo 后，游戏内才会使用新位置。",
 };
 }
 

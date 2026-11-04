@@ -436,6 +436,8 @@ static void to_json(json& j, const KeychainProfile& value)
         {"base_item", value.base_item},
         {"keychain_kit", value.keychain_kit},
         {"explicit_clear", value.explicit_clear},
+        {"custom_position", value.custom_position},
+        {"preview_position", value.preview_position},
     };
 }
 
@@ -447,6 +449,12 @@ static void from_json(const json& j, KeychainProfile& value)
     value.base_item = j.value("base_item", 7);
     value.keychain_kit = j.value("keychain_kit", 0);
     value.explicit_clear = j.value("explicit_clear", false);
+    value.custom_position = j.value("custom_position", false);
+    value.preview_position = j.value("preview_position", std::array {0.5f, 0.5f});
+    for (auto& coordinate : value.preview_position)
+    {
+        coordinate = std::isfinite(coordinate) ? std::clamp(coordinate, 0.0f, 1.0f) : 0.5f;
+    }
 }
 
 static void to_json(json& j, const MapRemapProfile& value)

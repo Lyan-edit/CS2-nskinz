@@ -188,7 +188,7 @@ def mapping_at(offset, triangles):
     return points[np.argmax(points[:, 0])]
 
 
-def make_projector(positions):
+def make_projector(positions, *, include_depth=False):
     minimum, maximum = positions.min(axis=0), positions.max(axis=0)
     length = max(1e-6, maximum[2] - minimum[2])
     height = max(1e-6, maximum[1] - minimum[1])
@@ -212,7 +212,14 @@ def make_projector(positions):
     span = maximum2 - minimum2
     scale = min(0.94 / max(span[0], 1e-6), 0.82 / max(span[1], 1e-6))
     center = (minimum2 + maximum2) * 0.5
-    return lambda points: (raw(points) - center) * scale + np.array([0.5, 0.53])
+    def project(points):
+        projected = (raw(points) - center) * scale + np.array([0.5, 0.53])
+        if include_depth:
+            depth = (points - eye) @ forward
+            return projected, 1.0 / depth
+        return projected
+
+    return project
 
 
 def simplify_polyline(points, epsilon=1.5):
