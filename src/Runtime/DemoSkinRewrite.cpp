@@ -796,6 +796,67 @@ bool nskinzcs2::runtime::PublishCurrentDemoPathSidecar(
     return true;
 }
 
+bool nskinzcs2::runtime::PublishGloveApplyCarriers(
+    const std::filesystem::path& directory, const DWORD process_id,
+    const std::unordered_map<std::uint64_t, GloveApplyCarrier>& carriers)
+{
+    json entries = json::object();
+    for (const auto& [xuid, carrier] : carriers)
+        entries[std::to_string(xuid)] = {carrier.definition, carrier.reconstructed};
+    const auto file = directory / (L"nSkinzCS2.glove-routing-" + std::to_wstring(process_id) + L".json");
+    const auto temporary = file.wstring() + L".tmp";
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        if (!stream) return false;
+        stream << json {{"at", GetTickCount64()}, {"carriers", entries}}.dump();
+        if (!stream) return false;
+    }
+    return MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+}
+
+std::unordered_map<std::uint64_t, nskinzcs2::runtime::GloveApplyCarrier>
+nskinzcs2::runtime::ReadGloveApplyCarriers(const std::filesystem::path& directory, const DWORD process_id)
+{
+    std::unordered_map<std::uint64_t, GloveApplyCarrier> carriers;
+    try
+    {
+        const auto file = directory / (L"nSkinzCS2.glove-routing-" + std::to_wstring(process_id) + L".json");
+        const auto value = json::parse(ReadTextFileLimited(file, 32768));
+        const auto timestamp = value.at("at").get<ULONGLONG>();
+        const auto now = GetTickCount64();
+        if (timestamp > now || now - timestamp > 5000) return carriers;
+        for (const auto& [key, entry] : value.at("carriers").items())
+            carriers.emplace(std::stoull(key), GloveApplyCarrier {entry.at(0).get<int>(), entry.at(1).get<bool>()});
+    }
+    catch (...) { carriers.clear(); }
+    return carriers;
+}
+
+nskinzcs2::runtime::DemoSkinRewriteResult nskinzcs2::runtime::PrepareDemoReload(
+    const std::filesystem::path& captured_demo, const DWORD cs2_process_id)
+{
+    DemoSkinRewriteResult result;
+    const auto root = ResolveCs2InstallRoot(cs2_process_id);
+    const auto source = root ? ResolveSourceDemo(captured_demo, *root) : std::nullopt;
+    if (!source)
+    {
+        result.detail = L"Load the source Demo before applying this change.";
+        return result;
+    }
+    const auto path = PathUtf8(*source);
+    if (path.find_first_of("\"\r\n;") != std::string::npos)
+    {
+        result.detail = L"The Demo path contains unsupported command characters.";
+        return result;
+    }
+    result.success = true;
+    result.source_demo = *source;
+    result.output_demo = *source;
+    result.playdemo_command = "playdemo \"" + path + "\"";
+    result.detail = L"Demo reload prepared.";
+    return result;
+}
+
 std::optional<std::filesystem::path> nskinzcs2::runtime::ReadCurrentDemoPathSidecar(
     const std::filesystem::path& dll_directory)
 {
@@ -844,7 +905,8 @@ bool nskinzcs2::runtime::IsGeneratedDemoRewrittenGloveProfile(
 
 DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
     const ConfigDocument& config,
-    const model::Catalog* catalog)
+    const model::Catalog* catalog,
+    const bool smart_routes)
 {
     std::map<std::uint64_t, DemoSkinRewritePass> grouped;
     DemoSkinRewritePlan result;
@@ -857,7 +919,8 @@ DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
             [](const auto& sticker) { return sticker.kit_id > 0; }));
         if (!profile.enabled || profile.xuid == 0 || profile.base_item <= 0 ||
             profile.base_item >= 500 || profile.base_item == 42 || profile.base_item == 59 ||
-            (profile.paint_kit <= 0 && sticker_slot_count == 0))
+            (profile.paint_kit <= 0 && sticker_slot_count == 0) ||
+            (smart_routes && sticker_slot_count == 0))
         {
             continue;
         }
@@ -884,7 +947,7 @@ DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
         AddPassItem(grouped, profile.xuid, BuildBatchItem(
             profile.base_item,
             profile.base_item,
-            profile.paint_kit,
+            smart_routes ? 0 : profile.paint_kit,
             profile.quality,
             model::NormalizeCosmeticSeed(profile.seed),
             model::NormalizeCosmeticWear(profile.wear),
@@ -1052,14 +1115,34 @@ DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
     return result;
 }
 
+bool nskinzcs2::runtime::HasEnabledCosmeticXuid(const ConfigDocument& config) noexcept
+{
+    const auto targeted = [](const auto& profiles)
+    {
+        return std::any_of(profiles.begin(), profiles.end(),
+            [](const auto& profile) { return profile.enabled && profile.xuid != 0; });
+    };
+    return targeted(config.profiles) || targeted(config.knife_profiles) ||
+        targeted(config.glove_profiles) || targeted(config.keychain_profiles);
+}
+
 DemoSkinRewriteResult nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
     const ConfigDocument& config,
     const model::Catalog* catalog,
     const std::filesystem::path& captured_source_demo,
-    const DWORD cs2_process_id)
+    const DWORD cs2_process_id,
+    const bool smart_routes)
 {
     DemoSkinRewriteResult result;
-    const auto plan = BuildDefaultDemoSkinRewritePlan(config, catalog);
+    if (!HasEnabledCosmeticXuid(config))
+    {
+        result.issue = DemoSkinRewriteIssue::MissingXuid;
+        result.detail = L"Cosmetic Demo reconstruction was cancelled: no enabled cosmetic profile has a target XUID. "
+            L"The XUID identifies whose weapons, knives, gloves, stickers or keychains should be changed. "
+            L"Workshop map replacement does not require a XUID or cosmetic reconstruction; use Smart Apply to reload the map.";
+        return result;
+    }
+    const auto plan = BuildDefaultDemoSkinRewritePlan(config, catalog, smart_routes);
     if (!plan.validation_issue.empty())
     {
         result.detail = plan.validation_issue;
@@ -1305,6 +1388,7 @@ DemoSkinRewriteResult nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
     if (plan.keychain_item_count > 0 &&
         (rewritten_keychain_weapons == 0 || verified_keychain_created == 0))
     {
+        result.issue = DemoSkinRewriteIssue::NoMatchingKeychain;
         result.detail = L"No matching keychain weapon snapshots were verified. Check the XUID and firearm; the generated Demo will not be loaded.";
         Logger::Error(result.detail);
         return result;

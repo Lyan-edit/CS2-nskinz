@@ -12,6 +12,10 @@ namespace nskinzcs2::ui
 // graphics or text-service objects are then created inside cs2.exe.
 bool LaunchExternalUiHost(HMODULE module, DWORD runtime_process_id);
 
+// Arms the runtime using the already persisted configuration, without saving
+// or applying the editor's staged changes. This enables source Demo capture.
+bool RequestExternalRuntimeActivation(DWORD runtime_process_id);
+
 // Saves the complete editor document and asks the injected runtime to reload
 // it before its next manual refresh.
 bool PublishExternalConfigUpdate(

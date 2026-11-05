@@ -9,6 +9,7 @@
 #include "UI/ExternalUiHost.hpp"
 #include "UI/StickerPreviewMetrics.hpp"
 #include "UI/KeychainPreview.hpp"
+#include "Core/SmartApply.hpp"
 #include "UI/StickerPreviewPlacement.generated.hpp"
 #include "UI/UiText.hpp"
 #include "UI/WeaponPreviewGeometry.generated.hpp"
@@ -52,6 +53,7 @@ bool UiPreviewFailOnce(const char* phase);
 bool UiPreviewRetryAfterFailure();
 bool UiPreviewDocumentationCapture();
 bool UiPreviewKeychainCapture();
+bool UiPreviewMissingXuidCapture();
 #endif
 
 namespace
@@ -1193,6 +1195,13 @@ public:
         }
 
         working_config_dirty_ = false;
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewMissingXuidCapture())
+        {
+            demo_skin_rewrite_result_ = nskinzcs2::runtime::GenerateTemporarySkinnedDemo(working_config_, nullptr, {}, 0);
+            LocalizeDemoRewriteIssue();
+        }
+#endif
         Logger::Info(L"UI controller initialized; Workshop discovery is deferred until the map tab is opened.");
     }
 
@@ -1614,7 +1623,6 @@ private:
         }
 
         DrawMainWindow();
-        FlushStickerLivePreview();
 
         ImGui::Render();
         constexpr float clear_color[4] {0.08f, 0.08f, 0.08f, 1.0f};
@@ -1711,10 +1719,29 @@ private:
 
     void DrawMainWindow()
     {
+        RefreshCapturedDemoSkinSource();
+        RefreshDemoSkinRewriteResult();
         auto status = state_.SnapshotStatus();
         const auto catalog_snapshot = state_.SnapshotCatalogShared();
         const auto& catalog = *catalog_snapshot;
         EnsureCatalogUiCache(catalog_snapshot);
+        if (smart_apply_capture_pending_)
+        {
+            if (!demo_skin_source_path_.empty())
+            {
+                smart_apply_capture_pending_ = false;
+                const auto carriers = nskinzcs2::runtime::ReadGloveApplyCarriers(
+                    config_path_.parent_path(), external_runtime_process_id_);
+                StartSmartApply(catalog, nskinzcs2::BuildSmartApplyPlan(
+                    smart_applied_config_ ? &*smart_applied_config_ : nullptr, working_config_, carriers,
+                    smart_reconstructed_knives_));
+            }
+            else if (GetTickCount64() >= smart_apply_capture_deadline_)
+            {
+                smart_apply_capture_pending_ = false;
+                demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::SmartApplyMissingSource));
+            }
+        }
 
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
@@ -1730,6 +1757,7 @@ private:
             return;
         }
 
+        ImGui::BeginDisabled(demo_skin_rewrite_future_.valid() || smart_apply_capture_pending_);
         ImGui::TextUnformatted(Ui(UiTextId::AppTitle));
         ImGui::SameLine();
         ImGui::TextDisabled("%s", Ui(UiTextId::AppSubtitle));
@@ -1825,7 +1853,11 @@ private:
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem(Ui(UiTextId::TabDemoRewrite)))
+            ImGuiTabItemFlags rewrite_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewMissingXuidCapture()) rewrite_tab_flags = ImGuiTabItemFlags_SetSelected;
+#endif
+            if (ImGui::BeginTabItem(Ui(UiTextId::TabDemoRewrite), nullptr, rewrite_tab_flags))
             {
                 DrawDemoSkinRewriteEditor(catalog);
                 ImGui::EndTabItem();
@@ -1836,6 +1868,23 @@ private:
 
         ImGui::Separator();
         DrawActions(catalog);
+        ImGui::EndDisabled();
+
+        if (demo_rewrite_xuid_notice_requested_)
+        {
+            ImGui::OpenPopup(Ui(UiTextId::DemoRewriteMissingXuidTitle));
+            demo_rewrite_xuid_notice_requested_ = false;
+        }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        if (ImGui::BeginPopupModal(Ui(UiTextId::DemoRewriteMissingXuidTitle), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 36.0f);
+            ImGui::TextUnformatted(Ui(UiTextId::DemoRewriteMissingXuidBody));
+            ImGui::PopTextWrapPos();
+            if (ImGui::Button(Ui(UiTextId::Acknowledge), ImVec2(120.0f, 0.0f)))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
 
         ImGui::Separator();
         if (ImGui::CollapsingHeader(Ui(UiTextId::RuntimeDiagnostics)))
@@ -2835,7 +2884,6 @@ private:
             const bool saved_reference = profile.target_map_name == "de_inferno_water" ||
                 profile.radar_overlay_virtual_path.starts_with("panorama/images/overheadmaps/nskinz_ref_");
             if (saved_reference) ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarReferenceLocked));
-            bool radar_settings_released = false;
             const auto invalidate_prepared_radar = [&]()
             {
                 profile.radar_overlay_request_virtual_path.clear();
@@ -2854,7 +2902,6 @@ private:
             {
                 invalidate_prepared_radar();
             }
-            radar_settings_released |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarBlackToleranceHelp));
             if (ImGui::SliderInt(
                     Ui(UiTextId::MapRadarDarkDetailRadius),
@@ -2865,7 +2912,6 @@ private:
             {
                 invalidate_prepared_radar();
             }
-            radar_settings_released |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarDarkDetailRadiusHelp));
             ImGui::EndDisabled();
             if (ImGui::SliderInt(
@@ -2877,7 +2923,6 @@ private:
             {
                 invalidate_prepared_radar();
             }
-            radar_settings_released |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TextWrapped("%s", Ui(UiTextId::MapRadarBackgroundAlphaHelp));
             if (ImGui::Button(Ui(UiTextId::MapRadarDefaults), ImVec2(-1.0f, 0.0f)))
             {
@@ -2885,11 +2930,6 @@ private:
                 profile.radar_dark_detail_radius = 12;
                 profile.radar_background_alpha_percent = 0;
                 invalidate_prepared_radar();
-                radar_settings_released = true;
-            }
-            if (radar_settings_released)
-            {
-                PublishWorkingConfigUpdate(L"radar-control");
             }
         }
 
@@ -2985,6 +3025,18 @@ private:
         }
     }
 
+    void LocalizeDemoRewriteIssue()
+    {
+        using nskinzcs2::runtime::DemoSkinRewriteIssue;
+        if (demo_skin_rewrite_result_.issue == DemoSkinRewriteIssue::MissingXuid)
+        {
+            demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::DemoRewriteMissingXuidHint));
+            demo_rewrite_xuid_notice_requested_ = true;
+        }
+        else if (demo_skin_rewrite_result_.issue == DemoSkinRewriteIssue::NoMatchingKeychain)
+            demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::DemoRewriteKeychainNoMatch));
+    }
+
     void RefreshDemoSkinRewriteResult()
     {
         if (!demo_skin_rewrite_future_.valid() ||
@@ -3008,9 +3060,26 @@ private:
             demo_skin_rewrite_result_.detail = L"Temporary demo rewrite worker failed unexpectedly.";
         }
 
+        LocalizeDemoRewriteIssue();
         if (!demo_skin_rewrite_result_.success)
         {
+            smart_apply_rebuild_pending_ = false;
             return;
+        }
+        if (smart_apply_rebuild_pending_ && smart_apply_source_ != demo_skin_source_path_)
+        {
+            smart_apply_rebuild_pending_ = false;
+            demo_skin_rewrite_result_.detail = L"The source Demo changed during generation. Press Smart Apply again.";
+            return;
+        }
+        if (smart_apply_rebuild_pending_)
+        {
+            smart_apply_rebuild_pending_ = false;
+            if (!PublishWorkingConfigUpdate(L"Smart Apply"))
+            {
+                demo_skin_rewrite_result_.detail += L" Config publication failed. Press Smart Apply to retry.";
+                return;
+            }
         }
         if (!nskinzcs2::ui::PublishExternalDemoCommand(
                 external_runtime_process_id_,
@@ -3023,11 +3092,17 @@ private:
             return;
         }
         demo_skin_rewrite_result_.detail += L" The playdemo command was queued in CS2.";
+        smart_applied_config_ = working_config_;
+        smart_reconstructed_knives_ = pending_reconstructed_knives_;
+        smart_plan_dirty_ = true;
         Logger::Info(demo_skin_rewrite_result_.detail);
     }
 
     void RefreshCapturedDemoSkinSource()
     {
+        const auto now = GetTickCount64();
+        if (now - demo_skin_source_refreshed_ < 500) return;
+        demo_skin_source_refreshed_ = now;
         const auto observed = nskinzcs2::runtime::ReadCurrentDemoPathSidecar(
             config_path_.parent_path());
         if (!observed || observed->empty() || *observed == demo_skin_last_observed_path_)
@@ -3037,6 +3112,9 @@ private:
         demo_skin_last_observed_path_ = *observed;
         if (!nskinzcs2::runtime::IsGeneratedDemoSkinPath(*observed))
         {
+            smart_reconstructed_knives_.clear();
+            smart_applied_config_.reset();
+            smart_plan_dirty_ = true;
             if (*observed != demo_skin_source_path_)
             {
                 demo_skin_rewrite_result_.resolved_sticker_placements.clear();
@@ -3066,6 +3144,9 @@ private:
             if (edited_source != demo_skin_source_path_)
             {
                 demo_skin_rewrite_result_.resolved_sticker_placements.clear();
+                smart_applied_config_.reset();
+                smart_reconstructed_knives_.clear();
+                smart_plan_dirty_ = true;
             }
             demo_skin_source_path_ = edited_source;
         }
@@ -3074,6 +3155,7 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::DemoRewriteSourceWaiting));
         }
 
+        const auto has_xuid = nskinzcs2::runtime::HasEnabledCosmeticXuid(working_config_);
         const auto plan = nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(working_config_, &catalog);
         ImGui::Text(
             Ui(UiTextId::DemoRewriteProfilesFormat),
@@ -3083,6 +3165,12 @@ private:
             plan.knife_item_count,
             plan.glove_item_count,
             plan.keychain_item_count);
+        if (!has_xuid)
+        {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.2f, 1.0f), "%s", Ui(UiTextId::DemoRewriteMissingXuidHint));
+            ImGui::PopTextWrapPos();
+        }
         if (!plan.validation_issue.empty())
         {
             ImGui::TextColored(
@@ -3093,25 +3181,35 @@ private:
 
         const auto busy = demo_skin_rewrite_future_.valid();
         ImGui::BeginDisabled(
-            busy || demo_skin_source_path_.empty() || plan.passes.empty() || !plan.validation_issue.empty());
+            busy || (has_xuid && (demo_skin_source_path_.empty() || plan.passes.empty() || !plan.validation_issue.empty())));
         if (ImGui::Button(Ui(UiTextId::DemoRewriteGenerateLoad), ImVec2(-1.0f, 34.0f)))
         {
-            const auto config = working_config_;
-            const auto rewrite_catalog = catalog;
-            const auto source = demo_skin_source_path_;
-            const auto process_id = external_runtime_process_id_;
-            demo_skin_rewrite_result_ = {};
-            demo_skin_rewrite_result_.detail = L"Rewrite started.";
-            demo_skin_rewrite_future_ = std::async(
-                std::launch::async,
-                [config, rewrite_catalog, source, process_id]()
-                {
-                    return nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
-                        config,
-                        &rewrite_catalog,
-                        source,
-                        process_id);
-                });
+            if (!has_xuid)
+            {
+                demo_skin_rewrite_result_ = {};
+                demo_skin_rewrite_result_.issue = nskinzcs2::runtime::DemoSkinRewriteIssue::MissingXuid;
+                LocalizeDemoRewriteIssue();
+            }
+            else
+            {
+                const auto config = working_config_;
+                const auto rewrite_catalog = catalog;
+                const auto source = demo_skin_source_path_;
+                const auto process_id = external_runtime_process_id_;
+                pending_reconstructed_knives_ = nskinzcs2::BuildSmartApplyPlan(nullptr, config, {}).reconstructed_knives;
+                demo_skin_rewrite_result_ = {};
+                demo_skin_rewrite_result_.detail = L"Rewrite started.";
+                demo_skin_rewrite_future_ = std::async(
+                    std::launch::async,
+                    [config, rewrite_catalog, source, process_id]()
+                    {
+                        return nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
+                            config,
+                            &rewrite_catalog,
+                            source,
+                            process_id);
+                    });
+            }
         }
         ImGui::EndDisabled();
 
@@ -3146,42 +3244,9 @@ private:
         }
     }
 
-    void QueueStickerLivePreview()
+    void StageStickerEdit()
     {
         PushWorkingConfig();
-        if (!sticker_live_preview_enabled_ || external_runtime_process_id_ == 0)
-        {
-            return;
-        }
-
-        if (!sticker_live_preview_pending_)
-        {
-            sticker_live_preview_due_ =
-                std::chrono::steady_clock::now() + std::chrono::milliseconds(140);
-        }
-        sticker_live_preview_pending_ = true;
-    }
-
-    void FlushStickerLivePreview()
-    {
-        if (!sticker_live_preview_pending_)
-        {
-            return;
-        }
-        if (!sticker_live_preview_enabled_ || external_runtime_process_id_ == 0)
-        {
-            sticker_live_preview_pending_ = false;
-            return;
-        }
-        if (std::chrono::steady_clock::now() < sticker_live_preview_due_)
-        {
-            return;
-        }
-
-        // Clear before publishing so a failed bridge does not retry every
-        // render frame. A later edit schedules a fresh attempt.
-        sticker_live_preview_pending_ = false;
-        PublishWorkingConfigUpdate(L"sticker-live-preview");
     }
 
     void DrawStickerPlacementPreview(
@@ -3365,7 +3430,7 @@ private:
                 sticker.custom_position = true;
                 sticker.offset_x = new_x;
                 sticker.offset_y = new_y;
-                QueueStickerLivePreview();
+                StageStickerEdit();
                 update_centers();
             }
         }
@@ -3633,22 +3698,22 @@ private:
                 sticker.offset_x = stored.x;
                 sticker.offset_y = stored.y;
             }
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
         if (ImGui::SliderFloat(Ui(UiTextId::StickerWear), &sticker.wear, 0.0000001f, 1.0f, "%.7f"))
         {
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
         if (ImGui::SliderFloat(Ui(UiTextId::Scale), &sticker.scale, 0.1f, 5.0f, "%.3f"))
         {
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
         if (ImGui::SliderFloat(Ui(UiTextId::Rotation), &sticker.rotation, 0.0f, 360.0f, "%.1f"))
         {
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
         if (ImGui::Checkbox(Ui(UiTextId::StickerCustomPosition), &sticker.custom_position))
@@ -3709,7 +3774,7 @@ private:
                 sticker.offset_x = 0.0f;
                 sticker.offset_y = 0.0f;
             }
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
         ImGui::BeginDisabled(!sticker.custom_position);
@@ -3748,7 +3813,7 @@ private:
                 sticker.offset_x))
         {
             sticker.offset_x = nskinzcs2::model::NormalizeStickerOffset(sticker.offset_x);
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
         if (draw_offset_controls(
                 UiTextId::StickerOffsetY,
@@ -3757,7 +3822,7 @@ private:
                 sticker.offset_y))
         {
             sticker.offset_y = nskinzcs2::model::NormalizeStickerOffset(sticker.offset_y);
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
         ImGui::TextDisabled("%s", Ui(UiTextId::StickerOffsetRailHelp));
         ImGui::EndDisabled();
@@ -3773,25 +3838,10 @@ private:
             sticker.custom_position = true;
             sticker.offset_x = preset.x;
             sticker.offset_y = preset.y;
-            QueueStickerLivePreview();
+            StageStickerEdit();
         }
 
-        if (ImGui::Checkbox(Ui(UiTextId::StickerLivePreview), &sticker_live_preview_enabled_))
-        {
-            if (sticker_live_preview_enabled_)
-            {
-                QueueStickerLivePreview();
-            }
-            else
-            {
-                sticker_live_preview_pending_ = false;
-            }
-        }
-        ImGui::TextWrapped("%s", Ui(UiTextId::StickerLivePreviewHelp));
-        if (sticker_live_preview_pending_)
-        {
-            ImGui::TextDisabled("%s", Ui(UiTextId::StickerLivePreviewPending));
-        }
+        ImGui::TextWrapped("%s", Ui(UiTextId::StickerDemoOnly));
 
         DrawStickerPlacementPreview(
             stickers,
@@ -3808,10 +3858,25 @@ private:
 
     void DrawActions(const Catalog& catalog)
     {
-        const float width = ImGui::GetContentRegionAvail().x / 3.0f;
-        if (ImGui::Button(Ui(UiTextId::Update), ImVec2(width - 4.0f, 30.0f)))
+        const auto now = GetTickCount64();
+        if (smart_plan_dirty_ || now - smart_plan_refreshed_ >= 1000)
         {
-            PublishWorkingConfigUpdate(L"Update");
+            const auto carriers = nskinzcs2::runtime::ReadGloveApplyCarriers(
+                config_path_.parent_path(), external_runtime_process_id_);
+            smart_plan_ = nskinzcs2::BuildSmartApplyPlan(
+                smart_applied_config_ ? &*smart_applied_config_ : nullptr, working_config_, carriers,
+                smart_reconstructed_knives_);
+            smart_plan_refreshed_ = now;
+            smart_plan_dirty_ = false;
+        }
+        const auto& plan = smart_plan_;
+        ImGui::Text(Ui(UiTextId::SmartApplyRoutes), plan.live_changes, plan.rebuild_changes,
+            Ui(plan.reload_map ? UiTextId::Yes : UiTextId::No));
+        if (plan.unknown_glove) ImGui::TextWrapped("%s", Ui(UiTextId::SmartApplyUnknownGlove));
+        const float width = ImGui::GetContentRegionAvail().x / 3.0f;
+        if (ImGui::Button(Ui(UiTextId::SmartApply), ImVec2(width - 4.0f, 30.0f)))
+        {
+            StartSmartApply(catalog, plan);
         }
 
         ImGui::SameLine();
@@ -3839,7 +3904,8 @@ private:
             working_config_ = ConfigStore::Load(config_path_);
             EnsureSelection();
             working_config_dirty_ = true;
-            Logger::Info(L"UI loaded config into the editor only. Press Update to apply it to the runtime.");
+            smart_plan_dirty_ = true;
+            Logger::Info(L"UI loaded config into the editor only. Press Smart Apply to apply it.");
         }
 
         if (working_config_dirty_)
@@ -3853,6 +3919,76 @@ private:
         {
             ImGui::TextDisabled("%s", Ui(UiTextId::EditorMatchesRuntime));
         }
+        if (demo_skin_rewrite_future_.valid())
+            ImGui::TextWrapped("%s", Ui(UiTextId::SmartApplyRebuilding));
+        else if (!demo_skin_rewrite_result_.detail.empty())
+            ImGui::TextWrapped("%s", Narrow(demo_skin_rewrite_result_.detail).c_str());
+    }
+
+    void StartSmartApply(const Catalog& catalog, const nskinzcs2::SmartApplyPlan& plan)
+    {
+        if (!plan.NeedsDemo())
+        {
+            if (PublishWorkingConfigUpdate(L"Smart Apply"))
+            {
+                smart_applied_config_ = working_config_;
+                smart_reconstructed_knives_ = plan.reconstructed_knives;
+            }
+            return;
+        }
+        if (demo_skin_source_path_.empty())
+        {
+            if (nskinzcs2::ui::RequestExternalRuntimeActivation(external_runtime_process_id_))
+            {
+                smart_apply_capture_pending_ = true;
+                smart_apply_capture_deadline_ = GetTickCount64() + 10000;
+                demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::SmartApplyCapturingSource));
+            }
+            else
+                demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::SmartApplyMissingSource));
+            return;
+        }
+        const auto rewrite_plan = plan.NeedsCosmeticRewrite()
+            ? nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(plan.rewrite_config, &catalog, true)
+            : nskinzcs2::runtime::DemoSkinRewritePlan {};
+        if (!rewrite_plan.validation_issue.empty())
+        {
+            demo_skin_rewrite_result_.detail = rewrite_plan.validation_issue;
+            return;
+        }
+        const auto source = demo_skin_source_path_;
+        const auto process = external_runtime_process_id_;
+        if (rewrite_plan.passes.empty())
+        {
+            const auto reload_path = !plan.NeedsCosmeticRewrite() && !demo_skin_last_observed_path_.empty()
+                ? demo_skin_last_observed_path_ : source;
+            auto reload = nskinzcs2::runtime::PrepareDemoReload(reload_path, process);
+            if (!reload.success)
+            {
+                demo_skin_rewrite_result_ = std::move(reload);
+                return;
+            }
+            if (PublishWorkingConfigUpdate(L"Smart Apply") &&
+                nskinzcs2::ui::PublishExternalDemoCommand(process, config_path_.parent_path(), reload.playdemo_command))
+            {
+                smart_applied_config_ = working_config_;
+                smart_reconstructed_knives_ = plan.reconstructed_knives;
+                demo_skin_rewrite_result_ = std::move(reload);
+            }
+            else
+                demo_skin_rewrite_result_.detail = L"Demo reload publication failed. Press Smart Apply to retry.";
+            return;
+        }
+        smart_apply_rebuild_pending_ = true;
+        pending_reconstructed_knives_ = plan.reconstructed_knives;
+        smart_apply_source_ = source;
+        demo_skin_rewrite_result_ = {};
+        demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::SmartApplyRebuilding));
+        demo_skin_rewrite_future_ = std::async(std::launch::async,
+            [config = plan.rewrite_config, catalog, source, process]()
+            {
+                return nskinzcs2::runtime::GenerateTemporarySkinnedDemo(config, &catalog, source, process, true);
+            });
     }
 
     void EnsureSelection()
@@ -3942,6 +4078,7 @@ private:
     void PushWorkingConfig()
     {
         working_config_dirty_ = true;
+        smart_plan_dirty_ = true;
     }
 
     bool PublishWorkingConfigUpdate(const wchar_t* source)
@@ -3984,8 +4121,8 @@ private:
         {
             state_.RequestManualRefresh();
         }
-        sticker_live_preview_pending_ = false;
         working_config_dirty_ = false;
+        smart_plan_dirty_ = true;
         Logger::Info(
             std::wstring(external_update ? L"External UI" : L"UI") +
             L" saved and published staged config via " +
@@ -4108,17 +4245,26 @@ private:
     int selected_keychain_profile_ = 0;
     int selected_workshop_map_ = -1;
     int selected_weapon_sticker_ = 0;
-    bool sticker_live_preview_enabled_ = true;
+    std::optional<ConfigDocument> smart_applied_config_;
+    std::vector<KnifeProfile> smart_reconstructed_knives_;
+    std::vector<KnifeProfile> pending_reconstructed_knives_;
+    bool smart_apply_rebuild_pending_ = false;
+    bool smart_apply_capture_pending_ = false;
+    ULONGLONG smart_apply_capture_deadline_ = 0;
+    std::filesystem::path smart_apply_source_;
+    nskinzcs2::SmartApplyPlan smart_plan_;
+    ULONGLONG smart_plan_refreshed_ = 0;
+    bool smart_plan_dirty_ = true;
     bool keychain_preview_legacy_ = false;
     ImVec2 keychain_drag_offset_ {};
-    bool sticker_live_preview_pending_ = false;
     bool sticker_preview_dragging_ = false;
-    std::chrono::steady_clock::time_point sticker_live_preview_due_ {};
     WorkshopMapScanResult workshop_scan_;
     bool workshop_scan_attempted_ = false;
     std::filesystem::path demo_skin_source_path_;
+    ULONGLONG demo_skin_source_refreshed_ = 0;
     std::filesystem::path demo_skin_last_observed_path_;
     std::future<nskinzcs2::runtime::DemoSkinRewriteResult> demo_skin_rewrite_future_;
+    bool demo_rewrite_xuid_notice_requested_ = false;
     nskinzcs2::runtime::DemoSkinRewriteResult demo_skin_rewrite_result_;
     bool last_insert_state_ = false;
     bool imgui_context_created_ = false;

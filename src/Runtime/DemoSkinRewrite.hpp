@@ -63,9 +63,17 @@ struct DemoResolvedStickerPlacement
     std::array<DemoResolvedStickerSlot, 5> slots {};
 };
 
+enum class DemoSkinRewriteIssue
+{
+    None,
+    MissingXuid,
+    NoMatchingKeychain,
+};
+
 struct DemoSkinRewriteResult
 {
     bool success = false;
+    DemoSkinRewriteIssue issue = DemoSkinRewriteIssue::None;
     std::filesystem::path source_demo;
     std::filesystem::path output_demo;
     std::string playdemo_command;
@@ -86,6 +94,11 @@ bool PublishCurrentDemoPathSidecar(
 std::optional<std::filesystem::path> ReadCurrentDemoPathSidecar(
     const std::filesystem::path& dll_directory);
 
+bool PublishGloveApplyCarriers(const std::filesystem::path& directory, DWORD process_id,
+    const std::unordered_map<std::uint64_t, GloveApplyCarrier>& carriers);
+std::unordered_map<std::uint64_t, GloveApplyCarrier> ReadGloveApplyCarriers(
+    const std::filesystem::path& directory, DWORD process_id);
+
 bool IsGeneratedDemoSkinPath(const std::filesystem::path& path) noexcept;
 
 // Generated firearms retain native material initialization. Generated glove
@@ -102,11 +115,20 @@ bool IsGeneratedDemoRewrittenGloveProfile(
 
 DemoSkinRewritePlan BuildDefaultDemoSkinRewritePlan(
     const model::ConfigDocument& config,
-    const model::Catalog* catalog = nullptr);
+    const model::Catalog* catalog = nullptr,
+    bool smart_routes = false);
+
+// Maps do not need a player target. Cosmetic reconstruction requires at least
+// one enabled profile with a non-zero target XUID, including keychain profiles.
+bool HasEnabledCosmeticXuid(const model::ConfigDocument& config) noexcept;
 
 DemoSkinRewriteResult GenerateTemporarySkinnedDemo(
     const model::ConfigDocument& config,
     const model::Catalog* catalog,
     const std::filesystem::path& captured_source_demo,
-    DWORD cs2_process_id);
+    DWORD cs2_process_id,
+    bool smart_routes = false);
+
+DemoSkinRewriteResult PrepareDemoReload(
+    const std::filesystem::path& captured_demo, DWORD cs2_process_id);
 }

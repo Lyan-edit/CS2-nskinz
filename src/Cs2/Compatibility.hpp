@@ -11,11 +11,11 @@
 
 namespace nskinzcs2::compatibility
 {
-inline constexpr std::string_view kVerifiedClientVersion = "2000935";
-inline constexpr std::string_view kVerifiedPatchVersion = "1.41.9.2";
-inline constexpr std::string_view kVerifiedSourceRevision = "11162119";
+inline constexpr std::string_view kVerifiedClientVersion = "2000942";
+inline constexpr std::string_view kVerifiedPatchVersion = "1.41.9.6";
+inline constexpr std::string_view kVerifiedSourceRevision = "11206718";
 inline constexpr std::string_view kVerifiedHlaeVersion = "2.192.8.0";
-// C_EconWearable Schema size retained by the installed build 2000935 class
+// C_EconWearable Schema size retained by the installed build 2000942 class
 // metadata and cross-checked against both allocator immediates.
 inline constexpr std::uint32_t kWearableSchemaClassSize = 0x1920;
 

@@ -29,6 +29,7 @@ std::string_view fault_phase;
 std::atomic_bool fault_triggered {false}, retry_triggered {false};
 bool documentation_capture = false;
 bool keychain_capture = false;
+bool missing_xuid_capture = false;
 
 bool SaveFrame(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
@@ -94,6 +95,11 @@ bool UiPreviewKeychainCapture()
     return keychain_capture;
 }
 
+bool UiPreviewMissingXuidCapture()
+{
+    return missing_xuid_capture;
+}
+
 bool CompleteUiPreviewCapture(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
     static int frames = 0;
@@ -109,6 +115,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     const std::wstring_view arguments(command_line != nullptr ? command_line : L"");
     documentation_capture = arguments.find(L"--documentation") != std::wstring_view::npos;
     keychain_capture = arguments.find(L"--keychain") != std::wstring_view::npos;
+    missing_xuid_capture = arguments.find(L"--missing-xuid") != std::wstring_view::npos;
     if (arguments.find(L"--fail-construction-once") != std::wstring_view::npos) fault_phase = "construction";
     if (arguments.find(L"--fail-resources-once") != std::wstring_view::npos) fault_phase = "resources";
     if (arguments.find(L"--fail-device-once") != std::wstring_view::npos) fault_phase = "resources-return";
@@ -117,7 +124,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (length == 0 || length >= image.size()) return 1;
     image.resize(length);
     const auto directory = std::filesystem::path(image).parent_path();
-    capture_path = directory / (keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
+    capture_path = directory / (missing_xuid_capture ? L"missing-xuid-notice.png" :
+        keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
     nskinzcs2::Logger::Initialize(directory.wstring(), L"nSkinzCS2.preview.log");
     nskinzcs2::AppState state;
     const auto catalog = nskinzcs2::CatalogStore::Load(directory / L"nSkinzCS2.catalog.json");

@@ -12660,6 +12660,8 @@ struct HookState
 
 HookState g_hook_state;
 
+// The native weapon-selection table and Econ name getter serve knives and
+// firearms. Keep the original bridge's ABI checks and full-handle ownership.
 struct KnifeHudLabelRequest
 {
     std::uint64_t scene = 0, revision = 0, xuid = 0, signature = 0;
@@ -23606,6 +23608,7 @@ void ClearRuntimeEntityManager(
     ResetDemoKeychainControllerState();
     RestoreRuntimeWearableHandleBuffers(reason.empty() ? L"reset" : reason.c_str());
     g_hook_state.runtime_entities.players_by_xuid.clear();
+    if (g_hook_state.app_state) g_hook_state.app_state->ReplaceGloveApplyCarriers({});
     g_hook_state.runtime_entities.logged_profile_diagnostics.clear();
     g_hook_state.runtime_entities.last_rebuild_reason = reason;
     g_hook_state.last_rebuild_reason = reason;
@@ -82194,7 +82197,7 @@ bool TrySynchronizeLiveKnifeHudMaterials(const RenderedWorldWeaponTrace& trace,
     const auto client = reinterpret_cast<std::uintptr_t>(module->base);
     auto& reader = GetIndependentKnifeSession().host;
     if (!VerifyKnifeFinishEvidence(client, module->size, reader))
-        return pending(L"native knife material-copy ABI mismatch (verified client 2000940); finish and HUD name synchronization are blocked.");
+        return pending(L"native knife material-copy ABI mismatch (verified client 2000942); finish and HUD name synchronization are blocked.");
     const auto& binding = g_hook_state.weapon_skin_refresh;
     if (!g_hook_state.weapon_skin_refresh_ready.load() || binding.offset_patched ||
         binding.standard_material_owner_offset != 0x610 || binding.original_offset != 0xAB0 ||
@@ -83543,7 +83546,7 @@ void SubmitKnifeHudLabels(void* view, void* pawn)
             reinterpret_cast<void*>(row->panel), &token, request.full_name.c_str());
         request.commit.Complete(submitted);
         std::wstringstream message;
-        message << L"Knife right HUD label " << (submitted ? L"submitted" : L"failed")
+        message << L"Weapon right HUD label " << (submitted ? L"submitted" : L"failed")
             << L": xuid=" << request.xuid << L", handle=" << generation.handle
             << L", definition=" << definition << L", paint=" << paint
             << L", full_name=" << QuoteKnifeHudNameForLog(NarrowToWide(request.full_name))
@@ -83606,7 +83609,7 @@ bool EnsureKnifeHudLabelHook()
         return false;
     }
     g_knife_hud_labels.installed.store(true);
-    nskinzcs2::Logger::Info(L"Knife right HUD label bridge installed; existing icons matched by full weapon handle.");
+    nskinzcs2::Logger::Info(L"Weapon right HUD label bridge installed; existing icons matched by full weapon handle.");
     return true;
 }
 
@@ -83624,6 +83627,113 @@ void RemoveKnifeHudLabelHook() noexcept
     g_knife_hud_labels.original = nullptr;
     g_knife_hud_labels.client = 0;
     g_knife_hud_labels.faulted.store(false);
+}
+
+bool RegenerateWeaponHudName(KnifeHudLabelRequest label, const ClientSchemaOffsets& offsets)
+{
+    using namespace nskinzcs2::runtime;
+    const auto module = GetModuleSpan(GetModuleHandleW(L"client.dll"));
+    if (!module || !label.pawn || !EnsureKnifeHudLabelHook())
+        return false;
+    const auto client = reinterpret_cast<std::uintptr_t>(module->base);
+    if (!VerifyKnifeHudNameEvidence(client, module->size, GetIndependentKnifeSession().host))
+        return false;
+    const auto alive = [&]()
+    {
+        StandardWeaponEntityEpoch current;
+        return ReadStandardWeaponCarrierEpoch(label.generation.entity, offsets, current) &&
+            current == label.generation && ResolveWeaponItemView(current.entity, offsets) == label.item;
+    };
+    std::uintptr_t cached = 0;
+    const char* name = nullptr;
+    if (!alive() || !SafeInvokeVoidFunctionPointer(
+            reinterpret_cast<void*>(client + kKnifeInvalidateItemNameRva), label.item) ||
+        !alive() || !SafeReadField(label.item, kKnifeItemNameCacheOffset, cached) || cached != 0 ||
+        !SafeInvokeFunctionPointer(reinterpret_cast<void*>(client + kKnifeGetItemNameRva),
+            name, label.item, true) || !name || !SafeReadCString(name, label.full_name, 1024) ||
+        label.full_name.empty())
+        return false;
+    std::wstringstream message;
+    message << L"Firearm HUD native name regenerated: xuid=" << label.xuid
+        << L", handle=" << label.generation.handle << L", definition=" << label.definition
+        << L", paint=" << label.paint
+        << L", full_name=" << QuoteKnifeHudNameForLog(NarrowToWide(label.full_name))
+        << L", right_label_queued=1";
+    {
+        std::lock_guard lock(g_knife_hud_labels.mutex);
+        auto& requests = g_knife_hud_labels.requests;
+        std::erase_if(requests, [&](const KnifeHudLabelRequest& previous)
+        {
+            return previous.xuid == label.xuid && previous.generation.handle == label.generation.handle;
+        });
+        if (requests.size() >= 64) requests.erase(requests.begin());
+        requests.push_back(std::move(label));
+    }
+    nskinzcs2::Logger::Info(message.str());
+    return true;
+}
+
+void TryRefreshFirearmHudName(void* entity, void* item, const int entity_index,
+    const nskinzcs2::model::CosmeticProfile& source_profile, const ClientSchemaOffsets& offsets,
+    void* pawn, const std::uint64_t revision)
+{
+    using namespace nskinzcs2::runtime;
+    if (!entity || !item || !pawn || !IsHlaeOfflineRenderPassAuthorized() ||
+        !IsStandardWeaponProfile(source_profile) || !ProfileHasExplicitPaintIntent(source_profile))
+        return;
+    const auto epoch = g_hook_state.standard_weapon_appearance_epochs.find(entity_index);
+    if (epoch == g_hook_state.standard_weapon_appearance_epochs.end())
+        return;
+    auto profile = source_profile;
+    profile.custom_name = nskinzcs2::model::ResolveCosmeticCustomName(profile.custom_name);
+    const auto material_signature = BuildProfileApplySignature(
+        profile, profile.xuid, profile.base_item, kTargetTagWeaponEntity, nullptr);
+    auto& state = epoch->second;
+    StandardWeaponEntityEpoch generation;
+    std::uint32_t high = 0, low = 0, account = 0;
+    int definition = 0, paint = -1;
+    float attribute_paint = -1.0f;
+    std::string name;
+    if (!ReadStandardWeaponCarrierEpoch(entity, offsets, generation) || state.carrier != generation ||
+        !HasAppliedSignature(g_hook_state.applied_weapon_signatures, entity_index, material_signature) ||
+        !HasAppliedSignature(g_hook_state.refreshed_weapon_signatures, entity_index, material_signature) ||
+        !TryReadItemDefinitionIndex(item, offsets, definition) || definition != profile.base_item ||
+        !SafeReadField(entity, offsets.econ_entity_fallback_paint_kit, paint) || paint != profile.paint_kit ||
+        !TryReadAttributeValue(item, offsets, kAttributePaintKit, attribute_paint) ||
+        attribute_paint != static_cast<float>(profile.paint_kit) ||
+        !SafeReadField(item, offsets.item_view_item_id_high, high) || high != 0xFFFFFFFFu ||
+        !SafeReadField(item, offsets.item_view_item_id_low, low) ||
+        low != BuildStandardWeaponMaterialCacheKey(profile, profile.xuid, definition) ||
+        !SafeReadField(item, offsets.item_view_account_id, account) || account != AccountIdFromXuid(profile.xuid) ||
+        !SafeReadFixedString(item, offsets.item_view_custom_name, 161, name) || name != profile.custom_name)
+    {
+        state.knife_hud_name_attempt_signature = 0;
+        state.knife_hud_name_signature = 0;
+        return;
+    }
+    const auto signature = material_signature ^ (static_cast<std::uint64_t>(high) << 32 | low);
+    if (state.knife_hud_name_item == item && state.knife_hud_name_attempt_signature == signature)
+        return;
+    state.knife_hud_name_item = item;
+    state.knife_hud_name_attempt_signature = signature;
+    state.knife_hud_name_signature = 0;
+    KnifeHudLabelRequest label;
+    label.scene = g_hook_state.knife_model_scene_epoch.load();
+    label.revision = revision;
+    label.xuid = profile.xuid;
+    label.signature = signature;
+    label.generation = generation;
+    label.pawn = pawn;
+    label.item = item;
+    label.definition = definition;
+    label.paint = paint;
+    label.high = high;
+    label.low = low;
+    if (RegenerateWeaponHudName(std::move(label), offsets))
+        state.knife_hud_name_signature = signature;
+    else
+        LogProfileDiagnosticOnce(signature ^ 0x47554E4E414D45ull,
+            L"Firearm HUD name refresh is pending; native name/HUD ABI or cache regeneration failed.");
 }
 
 bool TryRefreshKnifeHudName(void* entity, void* item, const int entity_index,
@@ -83699,7 +83809,7 @@ bool TryRefreshKnifeHudName(void* entity, void* item, const int entity_index,
     if (!module) return fail(L"client module unavailable");
     const auto client = reinterpret_cast<std::uintptr_t>(module->base);
     if (!VerifyKnifeHudNameEvidence(client, module->size, GetIndependentKnifeSession().host))
-        return fail(L"native item-name cache/getter ABI is not verified (expected client 2000940)");
+        return fail(L"native item-name cache/getter ABI is not verified (expected client 2000942)");
     if (!pawn || !EnsureKnifeHudLabelHook()) return fail(L"native right HUD label bridge is not verified");
     const auto alive = [&]()
     {
@@ -83742,7 +83852,10 @@ bool TryRefreshKnifeHudName(void* entity, void* item, const int entity_index,
     {
         std::lock_guard lock(g_knife_hud_labels.mutex);
         auto& requests = g_knife_hud_labels.requests;
-        std::erase_if(requests, [&](const KnifeHudLabelRequest& previous) { return previous.xuid == profile.xuid; });
+        std::erase_if(requests, [&](const KnifeHudLabelRequest& previous)
+        {
+            return previous.xuid == profile.xuid && previous.generation.handle == generation.handle;
+        });
         if (requests.size() >= 64) requests.erase(requests.begin());
         requests.push_back(std::move(label));
     }
@@ -83814,6 +83927,8 @@ void PollGameThreadStateModern()
     // path. Finish-only stays live on both original and generated recordings;
     // model+finish never enters the injected model or finish fallback chains.
     const auto knife_hud_profiles = config.knife_profiles;
+    for (auto& profile : config.profiles)
+        profile.stickers = {};
     nskinzcs2::runtime::RestrictKnifeProfilesToLiveFinish(config.knife_profiles);
     const auto current_demo_file_path = SnapshotCurrentDemoFilePath();
     const auto generated_demo_skin =
@@ -86501,6 +86616,19 @@ void PollGameThreadStateModern()
         PollIndependentKnifeModel(profile, player, entity_list, entity_cache, demo_playing, observer_verified, now);
     }
 
+    if (g_hook_state.app_state)
+    {
+        std::unordered_map<std::uint64_t, nskinzcs2::runtime::GloveApplyCarrier> carriers;
+        for (const auto& [xuid, binding] : runtime_entities.players_by_xuid)
+        {
+            int definition = 0;
+            auto* item = ResolveGloveItemView(binding.pawn_entity, g_hook_state.schema_offsets);
+            if (item && TryReadItemDefinitionIndex(item, g_hook_state.schema_offsets, definition))
+                carriers.emplace(xuid, nskinzcs2::runtime::GloveApplyCarrier {definition, generated_demo_skin});
+        }
+        g_hook_state.app_state->ReplaceGloveApplyCarriers(std::move(carriers));
+    }
+
     // UI-only invalidation also runs when a knife's material fast path skipped
     // its apply loop, or when model+finish was reconstructed in the Demo.
     for (const auto& profile : knife_hud_profiles)
@@ -86520,6 +86648,31 @@ void PollGameThreadStateModern()
             owner != binding.pawn_handle) continue;
         TryRefreshKnifeHudName(entity, ResolveWeaponItemView(entity, g_hook_state.schema_offsets),
             index, profile, g_hook_state.schema_offsets, binding.pawn_entity, config_revision);
+    }
+
+    for (const auto& source_profile : config.profiles)
+    {
+        if (!source_profile.enabled || source_profile.xuid == 0 ||
+            !IsStandardWeaponProfile(source_profile) || !ProfileHasExplicitPaintIntent(source_profile))
+            continue;
+        const auto player = runtime_entities.players_by_xuid.find(source_profile.xuid);
+        if (player == runtime_entities.players_by_xuid.end()) continue;
+        const auto& binding = player->second;
+        const int index = binding.active_weapon_entity_index;
+        if (index < 0 || index >= static_cast<int>(entity_cache.size())) continue;
+        auto* entity = entity_cache[static_cast<std::size_t>(index)];
+        auto* item = ResolveWeaponItemView(entity, g_hook_state.schema_offsets);
+        int definition = 0;
+        std::uint32_t handle = kInvalidEntityHandle, owner = kInvalidEntityHandle;
+        if (!entity || !item || !TryReadItemDefinitionIndex(item, g_hook_state.schema_offsets, definition) ||
+            !TryReadHudBindingHandle(entity, g_hook_state.schema_offsets, handle) ||
+            handle != binding.active_weapon_handle ||
+            !SafeReadField(entity, g_hook_state.schema_offsets.base_owner_entity, owner) ||
+            owner != binding.pawn_handle) continue;
+        const auto* profile = nskinzcs2::ConfigStore::FindMatchingProfile(config, source_profile.xuid, definition);
+        if (profile != &source_profile) continue;
+        TryRefreshFirearmHudName(entity, item, index, *profile, g_hook_state.schema_offsets,
+            binding.pawn_entity, config_revision);
     }
 
     if (has_glove_profile)
@@ -86649,7 +86802,8 @@ void PollGameThreadStateModern()
                     generated_demo_skin,
                     direct_pawn_glove_definition_readable,
                     direct_pawn_glove_definition_index) ||
-                request.explicit_vanilla_finish)
+                request.explicit_vanilla_finish ||
+                request.mode == nskinzcs2::runtime::GloveSlotMode::ModelAndFinish)
             {
                 const auto signature = BuildGloveProfileApplySignature(
                     effective_glove_profile, xuid,
@@ -92758,6 +92912,20 @@ void nskinzcs2::RuntimeController::AppendHookTelemetry(runtime::Status& status) 
 void nskinzcs2::RuntimeController::PublishDemoFilePathSidecar(
     const std::wstring& demo_file_path)
 {
+    static ULONGLONG last_routing_publish = 0;
+    const auto now = GetTickCount64();
+    if (now - last_routing_publish >= 1000)
+    {
+        std::wstring path(32768, L'\0');
+        const auto length = GetModuleFileNameW(module_instance_, path.data(), static_cast<DWORD>(path.size()));
+        if (length > 0 && length < path.size())
+        {
+            path.resize(length);
+            runtime::PublishGloveApplyCarriers(std::filesystem::path(path).parent_path(),
+                GetCurrentProcessId(), state_.SnapshotGloveApplyCarriers());
+        }
+        last_routing_publish = now;
+    }
     if (demo_file_path_sidecar_published_ &&
         _wcsicmp(last_published_demo_file_path_.c_str(), demo_file_path.c_str()) == 0)
     {

@@ -1262,15 +1262,15 @@ void InstalledFinishBinaryEvidence(const wchar_t* client)
         Check(static_cast<std::int64_t>(caller) + 5 + displacement == static_cast<std::int64_t>(target), message);
     };
     // Read both ends from the real PE. A blanket RVA shift is incorrect: the
-    // material apply function moved in 2000940, its current-model callee did not.
-    check_call(kKnifeMaterialApplyRva + 0x22, 0x21C8D0, "material apply still reads the current model");
-    check_call(0x804210, kKnifeClearMaterialsRva, "generator failure clears the verified material owner");
-    check_call(0x10D8839, kKnifeCopyMaterialsRva, "native HUD construction uses the verified material-copy entry");
-    check_call(0x1192E52, kKnifeInvalidateItemNameRva, "native Econ attribute setter invalidates this name cache");
-    check_call(0xEAADA8, kKnifeGetItemNameRva, "right HUD name consumer uses this item-name getter");
-    check_call(0xE09AF6, kKnifeGetItemNameRva, "full display-name consumer requests the same getter with true");
-    check_call(0xEAADCC, kKnifeHudSetDialogStringRva, "right HUD icon writes this exact string dialog variable");
-    check_call(0xEB2DAA, kKnifeHudSelectionUpdateRva, "HUD think updates this view with the selected pawn");
+    // material helpers and the current-model callee moved differently in 2000942.
+    check_call(kKnifeMaterialApplyRva + 0x22, 0x21C910, "material apply still reads the current model");
+    check_call(0x804330, kKnifeClearMaterialsRva, "generator failure clears the verified material owner");
+    check_call(0x10D9159, kKnifeCopyMaterialsRva, "native HUD construction uses the verified material-copy entry");
+    check_call(0x1193772, kKnifeInvalidateItemNameRva, "native Econ attribute setter invalidates this name cache");
+    check_call(0xEAB4D8, kKnifeGetItemNameRva, "right HUD name consumer uses this item-name getter");
+    check_call(0xE09FD6, kKnifeGetItemNameRva, "full display-name consumer requests the same getter with true");
+    check_call(0xEAB4FC, kKnifeHudSetDialogStringRva, "right HUD icon writes this exact string dialog variable");
+    check_call(0xEB344A, kKnifeHudSelectionUpdateRva, "HUD think updates this view with the selected pawn");
     for (const auto& window : KnifeFinishEvidenceWindows())
     {
         const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
@@ -1363,6 +1363,17 @@ void KnifeHudExistingLabelSelection()
         "the existing knife label is selected by its full serial handle among unrelated icons");
     Check(!FindKnifeHudLabelRow(view, handle, 507, memory), "a mismatched knife definition cannot receive the name");
     Check(!FindKnifeHudLabelRow(view, 0x123, 515, memory), "the entity index alone must not match a HUD label");
+    Check(FindKnifeHudLabelRow(view, 0x180234, 7, memory) ==
+        KnifeHudLabelRow {rows + 2 * 0x48, panel + 0x200},
+        "a firearm name selects its own icon alongside the knife");
+    Check(!FindKnifeHudLabelRow(view, 0x180234, 16, memory),
+        "an AK request cannot rename a different firearm definition");
+    set_row(0, 0x280123, 61, panel + 0x100);
+    Check(FindKnifeHudLabelRow(view, 0x280123, 61, memory) ==
+        KnifeHudLabelRow {rows, panel + 0x100},
+        "the pistol and rifle have independent full-handle label targets");
+    Check(!FindKnifeHudLabelRow(view, 0x280123, 5029, memory),
+        "a glove definition cannot address a weapon icon");
     set_row(2, handle, 515, panel + 0x200);
     Check(!FindKnifeHudLabelRow(view, handle, 515, memory), "ambiguous duplicate handles must not update any icon");
     set_row(2, 0x180234, 7, panel + 0x200);
@@ -1381,6 +1392,13 @@ void KnifeHudExistingLabelSelection()
     for (int i = 0; i < 100000; ++i)
         Check(!commit.Begin(415, expected), "steady-state callbacks must not write the label repeatedly");
     Check(commit.Applied(415, expected), "completion is distinct from queueing the full name");
+    KnifeHudLabelCommit firearm_commit;
+    const KnifeHudLabelRow firearm_row {rows + 2 * 0x48, panel + 0x200};
+    Check(firearm_commit.Begin(661, firearm_row), "a firearm queues independently of the knife");
+    firearm_commit.Complete(true);
+    Check(!firearm_commit.Begin(661, firearm_row), "stable gun cosmetics do not repeat UI writes");
+    Check(firearm_commit.Begin(309, firearm_row), "a new firearm finish reuses the correct icon");
+    Check(commit.Applied(415, expected), "a firearm update preserves knife label completion");
     const KnifeHudLabelRow recreated {rows + 0x48, panel + 0x300};
     Check(commit.Begin(415, recreated), "a recreated HUD panel requires its name again despite the same paint");
     commit.Complete(false);

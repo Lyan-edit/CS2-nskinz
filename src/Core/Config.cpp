@@ -1,5 +1,6 @@
 #include "Core/Config.hpp"
 #include "Core/Log.hpp"
+#include "Core/SmartApply.hpp"
 #include "UI/StickerPreviewPlacement.generated.hpp"
 
 #include "json.hpp"
@@ -754,6 +755,144 @@ const nskinzcs2::model::KeychainProfile* nskinzcs2::ConfigStore::FindMatchingKey
         });
 
     return iterator == document.keychain_profiles.rend() ? nullptr : &*iterator;
+}
+
+namespace
+{
+struct SmartApplyGroups
+{
+    json live = json::object();
+    json rebuild = json::object();
+};
+
+std::vector<nskinzcs2::model::KnifeProfile> ResolveReconstructedKnives(
+    const nskinzcs2::model::ConfigDocument& config,
+    const std::vector<nskinzcs2::model::KnifeProfile>& reconstructed)
+{
+    using namespace nskinzcs2;
+    std::vector<model::KnifeProfile> result;
+    for (const auto& profile : config.knife_profiles)
+    {
+        if (!profile.enabled || !profile.xuid ||
+            ConfigStore::FindMatchingKnifeProfile(config, profile.xuid) != &profile) continue;
+        if (profile.mode == model::KnifeProfileMode::ModelAndFinish)
+            result.push_back(profile);
+        else
+        {
+            const auto saved = std::find_if(reconstructed.begin(), reconstructed.end(),
+                [&](const auto& model) { return model.xuid == profile.xuid; });
+            if (saved != reconstructed.end()) result.push_back(*saved);
+        }
+    }
+    return result;
+}
+
+SmartApplyGroups CollectSmartApplyGroups(
+    const nskinzcs2::model::ConfigDocument& config,
+    const std::vector<nskinzcs2::model::KnifeProfile>& reconstructed_knives,
+    const std::unordered_map<std::uint64_t, nskinzcs2::GloveApplyCarrier>& gloves,
+    nskinzcs2::SmartApplyPlan* output)
+{
+    using namespace nskinzcs2;
+    SmartApplyGroups groups;
+    for (const auto& profile : config.profiles)
+    {
+        if (!profile.enabled || profile.xuid == 0) continue;
+        const auto key = "weapon/" + std::to_string(profile.xuid) + "/" + std::to_string(profile.base_item);
+        json value = profile;
+        value.erase("name");
+        value.erase("stickers");
+        if (profile.paint_kit > 0 || profile.explicit_vanilla_finish)
+            groups.live[key] = value;
+        if (std::any_of(profile.stickers.begin(), profile.stickers.end(),
+            [](const auto& sticker) { return sticker.kit_id > 0; }))
+            groups.rebuild[key + "/stickers"] = profile.stickers;
+    }
+    for (const auto& profile : config.knife_profiles)
+    {
+        if (!profile.enabled || profile.xuid == 0) continue;
+        json value = profile;
+        value.erase("name");
+        const auto key = "knife/" + std::to_string(profile.xuid);
+        if (profile.mode == model::KnifeProfileMode::FinishOnly)
+        {
+            value.erase("model_definition");
+            groups.live[key] = value;
+        }
+    }
+    for (const auto& profile : reconstructed_knives)
+    {
+        json value = profile;
+        value.erase("name");
+        groups.rebuild["knife/" + std::to_string(profile.xuid)] = value;
+    }
+    for (const auto& profile : config.glove_profiles)
+    {
+        if (!profile.enabled || profile.xuid == 0) continue;
+        const auto carrier = gloves.find(profile.xuid);
+        const bool unknown = carrier == gloves.end() || carrier->second.definition == 0;
+        const bool rebuild = profile.mode == model::GloveProfileMode::ModelAndFinish ||
+            profile.explicit_vanilla_finish || unknown ||
+            carrier->second.reconstructed || carrier->second.definition == 5028 || carrier->second.definition == 5029;
+        json value = profile;
+        value.erase("name");
+        if (profile.mode == model::GloveProfileMode::FinishOnly) value.erase("model_definition");
+        const auto key = "glove/" + std::to_string(profile.xuid);
+        (rebuild ? groups.rebuild : groups.live)[key] = value;
+        if (output)
+        {
+            output->unknown_glove |= unknown;
+            if (!rebuild)
+                std::erase_if(output->rewrite_config.glove_profiles,
+                    [&](const auto& candidate) { return candidate.xuid == profile.xuid; });
+        }
+    }
+    for (const auto& profile : config.keychain_profiles)
+    {
+        if (!profile.enabled || profile.xuid == 0 || (profile.keychain_kit <= 0 && !profile.explicit_clear)) continue;
+        json value = profile;
+        value.erase("name");
+        groups.rebuild["keychain/" + std::to_string(profile.xuid) + "/" + std::to_string(profile.base_item)] = value;
+    }
+    return groups;
+}
+
+int CountSmartApplyChanges(const json& before, const json& after)
+{
+    int changes = 0;
+    for (const auto& [key, value] : after.items())
+        changes += !before.contains(key) || before.at(key) != value;
+    for (const auto& [key, value] : before.items())
+        changes += !after.contains(key);
+    return changes;
+}
+}
+
+nskinzcs2::SmartApplyPlan nskinzcs2::BuildSmartApplyPlan(
+    const model::ConfigDocument* previous, const model::ConfigDocument& current,
+    const std::unordered_map<std::uint64_t, GloveApplyCarrier>& gloves,
+    const std::vector<model::KnifeProfile>& reconstructed_knives)
+{
+    SmartApplyPlan result;
+    result.rewrite_config = current;
+    const auto previous_models = previous
+        ? ResolveReconstructedKnives(*previous, reconstructed_knives) : reconstructed_knives;
+    result.reconstructed_knives = ResolveReconstructedKnives(current, previous_models);
+    const auto before = previous ? CollectSmartApplyGroups(*previous, previous_models, gloves, nullptr) : SmartApplyGroups {};
+    const auto after = CollectSmartApplyGroups(current, result.reconstructed_knives, gloves, &result);
+    result.rewrite_config.knife_profiles = result.reconstructed_knives;
+    result.live_changes = CountSmartApplyChanges(before.live, after.live);
+    result.rebuild_changes = CountSmartApplyChanges(before.rebuild, after.rebuild);
+    json map = current.map_remap;
+    json old_map = previous ? json(previous->map_remap) : json(model::MapRemapProfile {});
+    for (const auto* field : {"workshop_title", "radar_overlay_request_virtual_path",
+        "radar_overlay_virtual_path", "radar_overlay_root_path", "radar_overlay_file_path"})
+    {
+        map.erase(field);
+        old_map.erase(field);
+    }
+    result.reload_map = (current.map_remap.enabled || (previous && previous->map_remap.enabled)) && map != old_map;
+    return result;
 }
 
 const nskinzcs2::model::KnifeProfile* nskinzcs2::ConfigStore::FindMatchingKnifeProfile(

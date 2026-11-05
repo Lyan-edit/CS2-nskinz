@@ -1,4 +1,5 @@
 #include "Runtime/DemoSkinRewrite.hpp"
+#include "Core/SmartApply.hpp"
 
 #include "json.hpp"
 
@@ -43,7 +44,197 @@ void RunDemoSkinRewriteTests()
         runtime::BuildDefaultDemoSkinRewritePlan(config).passes.empty(),
         "empty config must not create a demo rewrite pass");
 
+    {
+        Check(!runtime::HasEnabledCosmeticXuid(config), "empty configuration has no enabled XUID");
+        const auto rejected = runtime::GenerateTemporarySkinnedDemo(config, nullptr, {}, 0);
+        Check(!rejected.success && rejected.issue == runtime::DemoSkinRewriteIssue::MissingXuid &&
+            rejected.output_demo.empty() && rejected.playdemo_command.empty(),
+            "missing XUID is rejected before source/process discovery or generation");
+        for (int module = 0; module < 4; ++module)
+        {
+            model::ConfigDocument target;
+            const auto check_target = [&](auto& profiles)
+            {
+                profiles.emplace_back();
+                profiles[0].enabled = true;
+                Check(!runtime::HasEnabledCosmeticXuid(target), "enabled zero XUID is not a player target");
+                profiles[0].xuid = 123;
+                Check(runtime::HasEnabledCosmeticXuid(target), "each cosmetic module can provide the target XUID");
+                profiles[0].enabled = false;
+                Check(!runtime::HasEnabledCosmeticXuid(target), "disabled saved XUID does not target a player");
+            };
+            if (module == 0) check_target(target.profiles);
+            else if (module == 1) check_target(target.knife_profiles);
+            else if (module == 2) check_target(target.glove_profiles);
+            else check_target(target.keychain_profiles);
+        }
+        model::ConfigDocument map_only;
+        map_only.map_remap.enabled = true;
+        map_only.map_remap.target_map_name = "de_inferno_water";
+        auto route = BuildSmartApplyPlan(nullptr, map_only, {});
+        Check(route.NeedsDemo() && !route.NeedsCosmeticRewrite() &&
+            !runtime::HasEnabledCosmeticXuid(map_only), "map-only reload never requires a cosmetic XUID");
+        model::KeychainProfile saved;
+        saved.enabled = true; saved.xuid = 123; saved.keychain_kit = 17;
+        map_only.keychain_profiles.push_back(saved);
+        auto previous = map_only;
+        map_only.map_remap.target_map_name = "de_mirage_water";
+        route = BuildSmartApplyPlan(&previous, map_only, {});
+        Check(route.reload_map && !route.NeedsCosmeticRewrite(),
+            "map-only edits do not re-run unchanged saved keychain overrides");
+        map_only.keychain_profiles[0].keychain_kit = 18;
+        Check(BuildSmartApplyPlan(&previous, map_only, {}).NeedsCosmeticRewrite(),
+            "mixed map and keychain edits still require cosmetic reconstruction");
+    }
+
+    {
+        model::ConfigDocument current;
+        model::CosmeticProfile weapon;
+        weapon.enabled = true;
+        weapon.xuid = 123;
+        weapon.base_item = 7;
+        weapon.paint_kit = 44;
+        current.profiles.push_back(weapon);
+        auto route = BuildSmartApplyPlan(nullptr, current, {});
+        Check(route.live_changes == 1 && !route.NeedsDemo(), "firearm paint uses live Smart Apply");
+        auto previous = current;
+        current.profiles[0].stickers[0].kit_id = 76;
+        route = BuildSmartApplyPlan(&previous, current, {});
+        Check(route.live_changes == 0 && route.rebuild_changes == 1, "sticker edits require reconstruction");
+        const auto request = runtime::BuildDefaultDemoSkinRewritePlan(route.rewrite_config, nullptr, true);
+        Check(request.passes.size() == 1 &&
+            json::parse(request.passes[0].item_json[0]).at("paint_kit") == 0,
+            "Smart Apply sticker serialization excludes live paint writes");
+        Check(!BuildSmartApplyPlan(&current, current, {}).NeedsDemo(), "unchanged stickers do not rebuild again");
+        previous = current;
+        current.profiles[0].paint_kit = 180;
+        route = BuildSmartApplyPlan(&previous, current, {});
+        Check(route.live_changes == 1 && !route.NeedsDemo(), "paint-only edits do not rebuild unchanged stickers");
+        model::KeychainProfile mixed_keychain;
+        mixed_keychain.enabled = true;
+        mixed_keychain.xuid = 123;
+        mixed_keychain.base_item = 7;
+        mixed_keychain.keychain_kit = 17;
+        current.keychain_profiles.push_back(mixed_keychain);
+        route = BuildSmartApplyPlan(&previous, current, {});
+        const auto mixed_request = runtime::BuildDefaultDemoSkinRewritePlan(route.rewrite_config, nullptr, true);
+        Check(route.live_changes == 1 && route.NeedsDemo() && mixed_request.sticker_slot_request_count == 1 &&
+            mixed_request.keychain_item_count == 1, "mixed reconstruction retains unchanged sticker overrides");
+        current.keychain_profiles.clear();
+        previous = current;
+        current.profiles[0].name = "Renamed list entry";
+        Check(BuildSmartApplyPlan(&previous, current, {}).live_changes == 0 &&
+            !BuildSmartApplyPlan(&previous, current, {}).NeedsDemo(), "profile labels do not trigger cosmetic work");
+        previous = current;
+        current.profiles[0].stickers = {};
+        Check(BuildSmartApplyPlan(&previous, current, {}).NeedsDemo(), "removing sticker overrides rebuilds from the source");
+
+        current = {};
+        model::KnifeProfile knife;
+        knife.enabled = true;
+        knife.xuid = 123;
+        knife.paint_kit = 415;
+        current.knife_profiles.push_back(knife);
+        Check(!BuildSmartApplyPlan(nullptr, current, {}).NeedsDemo(), "knife finish-only stays live");
+        current.knife_profiles[0].mode = model::KnifeProfileMode::ModelAndFinish;
+        current.knife_profiles[0].model_definition = 515;
+        Check(BuildSmartApplyPlan(nullptr, current, {}).NeedsDemo(), "knife model changes require a Demo");
+
+        current = {};
+        model::GloveProfile glove;
+        glove.enabled = true;
+        glove.xuid = 123;
+        glove.paint_kit = 10037;
+        current.glove_profiles.push_back(glove);
+        std::unordered_map<std::uint64_t, GloveApplyCarrier> carriers {{123, {5030, false}}};
+        route = BuildSmartApplyPlan(nullptr, current, carriers);
+        Check(route.live_changes == 1 && !route.NeedsDemo() && route.rewrite_config.glove_profiles.empty(),
+            "painted glove finish-only uses live fields and is excluded from rewriting");
+        for (const auto definition : {5028, 5029})
+        {
+            carriers[123] = {definition, false};
+            Check(BuildSmartApplyPlan(nullptr, current, carriers).NeedsDemo(), "both default teams require glove reconstruction");
+        }
+        carriers[123] = {5030, true};
+        Check(BuildSmartApplyPlan(nullptr, current, carriers).NeedsDemo(), "generated glove protection requires reconstruction");
+        route = BuildSmartApplyPlan(nullptr, current, {});
+        Check(route.NeedsDemo() && route.unknown_glove, "an unconfirmed glove never enters live mutation");
+        carriers[123] = {5030, false};
+        current.glove_profiles[0].explicit_vanilla_finish = true;
+        Check(BuildSmartApplyPlan(nullptr, current, carriers).NeedsDemo(), "stock glove restoration cannot enter live mutation");
+        current.glove_profiles[0].explicit_vanilla_finish = false;
+        current.glove_profiles[0].mode = model::GloveProfileMode::ModelAndFinish;
+        Check(BuildSmartApplyPlan(nullptr, current, carriers).NeedsDemo(), "changing glove model requires reconstruction");
+
+        current = {};
+        model::KeychainProfile keychain;
+        keychain.enabled = true;
+        keychain.xuid = 123;
+        keychain.keychain_kit = 17;
+        current.keychain_profiles.push_back(keychain);
+        Check(BuildSmartApplyPlan(nullptr, current, {}).NeedsDemo(), "keychains use the Demo route");
+        current = {};
+        current.map_remap.enabled = true;
+        current.map_remap.target_map_name = "de_inferno_water";
+        Check(BuildSmartApplyPlan(nullptr, current, {}).reload_map, "map changes queue a Demo reload");
+        previous = current;
+        current.map_remap.radar_overlay_virtual_path = "prepared-texture";
+        Check(!BuildSmartApplyPlan(&previous, current, {}).NeedsDemo(), "prepared radar metadata is not a new map edit");
+    }
+
     model::ConfigDocument live_finish_config;
+    {
+        model::ConfigDocument before;
+        model::KnifeProfile model;
+        model.enabled = true; model.xuid = 123;
+        model.mode = model::KnifeProfileMode::ModelAndFinish;
+        model.model_definition = 515; model.paint_kit = 568;
+        before.knife_profiles.push_back(model);
+        auto finish = before;
+        finish.knife_profiles[0].mode = model::KnifeProfileMode::FinishOnly;
+        finish.knife_profiles[0].paint_kit = 415;
+        auto route = BuildSmartApplyPlan(&before, finish, {});
+        Check(route.live_changes == 1 && !route.NeedsDemo(),
+            "model+finish to finish-only must hotpatch without reloading the original Demo");
+        Check(route.reconstructed_knives.size() == 1 &&
+            route.reconstructed_knives[0].model_definition == 515 &&
+            route.reconstructed_knives[0].paint_kit == 568,
+            "retain the last reconstructed model transaction separately from the new live finish");
+        const auto retained = route.reconstructed_knives;
+        auto next = finish;
+        next.knife_profiles[0].paint_kit = 569;
+        route = BuildSmartApplyPlan(&finish, next, {}, retained);
+        Check(route.live_changes == 1 && !route.NeedsDemo(), "later finish-only edits remain live");
+        Check(!BuildSmartApplyPlan(&next, next, {}, retained).NeedsDemo(), "stable finish-only state does not reload");
+        model::KeychainProfile charm;
+        charm.enabled = true; charm.xuid = 123; charm.base_item = 7; charm.keychain_kit = 17;
+        next.keychain_profiles.push_back(charm);
+        route = BuildSmartApplyPlan(&finish, next, {}, retained);
+        const auto rebuilt = runtime::BuildDefaultDemoSkinRewritePlan(route.rewrite_config, nullptr, true);
+        Check(route.NeedsCosmeticRewrite() && rebuilt.knife_item_count == 2 && rebuilt.keychain_item_count == 1,
+            "a later keychain reconstruction preserves both team knife model replacements");
+        for (const auto& item : rebuilt.passes[0].item_json)
+        {
+            const auto value = json::parse(item);
+            Check(value.at("replacement_definition_index") == 515 && value.at("paint_kit") == 568,
+                "reconstruction preserves the old model transaction; the new Finish-only paint stays live");
+        }
+        auto disabled = finish;
+        disabled.knife_profiles[0].enabled = false;
+        route = BuildSmartApplyPlan(&finish, disabled, {}, retained);
+        Check(route.NeedsCosmeticRewrite() && route.reconstructed_knives.empty(),
+            "explicitly disabling a reconstructed knife still removes its model override");
+        auto fresh = BuildSmartApplyPlan(nullptr, finish, {});
+        Check(!fresh.NeedsDemo() && fresh.reconstructed_knives.empty() && fresh.rewrite_config.knife_profiles.empty(),
+            "a hidden model selection in a fresh Finish-only profile never becomes a model rewrite");
+        auto second = model;
+        second.xuid = 456; second.model_definition = 507;
+        before.knife_profiles.push_back(second);
+        finish.knife_profiles.push_back(second);
+        route = BuildSmartApplyPlan(&before, finish, {});
+        Check(!route.NeedsDemo() && route.reconstructed_knives.size() == 2,
+            "switching one player to Finish-only preserves another player's model transaction");
+    }
     model::KnifeProfile live_finish;
     live_finish.enabled = true;
     live_finish.xuid = 76561198800578327ull;

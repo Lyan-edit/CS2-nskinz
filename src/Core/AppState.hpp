@@ -291,6 +291,12 @@ enum class DemoKeychainState
     Failed,
 };
 
+struct GloveApplyCarrier
+{
+    int definition = 0;
+    bool reconstructed = false;
+};
+
 struct Status
 {
     Availability availability = Availability::Unknown;
@@ -408,6 +414,18 @@ public:
         return status_;
     }
 
+    void ReplaceGloveApplyCarriers(std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> carriers)
+    {
+        std::scoped_lock lock(mutex_);
+        glove_apply_carriers_ = std::move(carriers);
+    }
+
+    std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> SnapshotGloveApplyCarriers() const
+    {
+        std::scoped_lock lock(mutex_);
+        return glove_apply_carriers_;
+    }
+
     void ReplaceConfig(model::ConfigDocument document)
     {
         std::scoped_lock lock(mutex_);
@@ -499,6 +517,7 @@ private:
     model::ConfigDocument config_;
     std::shared_ptr<const model::Catalog> catalog_ = std::make_shared<const model::Catalog>();
     runtime::Status status_;
+    std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> glove_apply_carriers_;
     std::vector<model::DemoMirvPlayerEntry> demo_mirv_players_;
     std::atomic<std::uint64_t> config_revision_ {0};
     std::atomic_bool demo_console_player_refresh_requested_ {false};

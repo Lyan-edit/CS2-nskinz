@@ -345,6 +345,17 @@ bool nskinzcs2::ui::LaunchExternalUiHost(
     return true;
 }
 
+bool nskinzcs2::ui::RequestExternalRuntimeActivation(const DWORD runtime_process_id)
+{
+    if (runtime_process_id == 0) return false;
+    const auto event_name = RuntimeEventName(runtime_process_id);
+    const auto event = OpenEventW(EVENT_MODIFY_STATE, FALSE, event_name.c_str());
+    if (event == nullptr) return false;
+    const auto signaled = SetEvent(event) != FALSE;
+    CloseHandle(event);
+    return signaled;
+}
+
 bool nskinzcs2::ui::PublishExternalConfigUpdate(
     const DWORD runtime_process_id,
     const std::filesystem::path& config_path,
@@ -360,15 +371,7 @@ bool nskinzcs2::ui::PublishExternalConfigUpdate(
         return false;
     }
 
-    const auto event_name = RuntimeEventName(runtime_process_id);
-    const auto event = OpenEventW(EVENT_MODIFY_STATE, FALSE, event_name.c_str());
-    if (event == nullptr)
-    {
-        return false;
-    }
-    const auto signaled = SetEvent(event) != FALSE;
-    CloseHandle(event);
-    return signaled;
+    return RequestExternalRuntimeActivation(runtime_process_id);
 }
 
 bool nskinzcs2::ui::PublishExternalDemoCommand(
