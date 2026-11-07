@@ -98,6 +98,9 @@ bool PublishGloveApplyCarriers(const std::filesystem::path& directory, DWORD pro
     const std::unordered_map<std::uint64_t, GloveApplyCarrier>& carriers);
 std::unordered_map<std::uint64_t, GloveApplyCarrier> ReadGloveApplyCarriers(
     const std::filesystem::path& directory, DWORD process_id);
+bool PublishAppearanceProbeTargets(const std::filesystem::path& directory, DWORD process_id,
+    const std::vector<std::uint64_t>& xuids);
+std::vector<std::uint64_t> ReadAppearanceProbeTargets(const std::filesystem::path& directory, DWORD process_id);
 
 bool IsGeneratedDemoSkinPath(const std::filesystem::path& path) noexcept;
 

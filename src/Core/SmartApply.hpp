@@ -26,4 +26,24 @@ SmartApplyPlan BuildSmartApplyPlan(
     const model::ConfigDocument& current,
     const std::unordered_map<std::uint64_t, GloveApplyCarrier>& gloves,
     const std::vector<model::KnifeProfile>& reconstructed_knives = {});
+
+enum class ApplyScope { WeaponFinish, Sticker, Knife, Glove, Keychain, Map };
+struct ApplyTarget
+{
+    ApplyScope scope = ApplyScope::WeaponFinish;
+    std::size_t index = 0;
+    int sticker_slot = -1; // -1 explicitly applies all five stickers on this weapon.
+};
+enum class ScopedApplyIssue { None, InvalidSelection, MissingXuid, ModelUnconfirmed, IncompatiblePaint };
+struct ScopedApplyPlan : SmartApplyPlan
+{
+    model::ConfigDocument apply_config;
+    ScopedApplyIssue issue = ScopedApplyIssue::None;
+};
+std::vector<model::NamedId> BuildScopedFinishOptions(
+    const model::Catalog& catalog, ApplyScope scope, int definition);
+ScopedApplyPlan BuildScopedApplyPlan(
+    const model::ConfigDocument& applied, const model::ConfigDocument& staged,
+    ApplyTarget target, const std::unordered_map<std::uint64_t, GloveApplyCarrier>& carriers,
+    const std::vector<model::KnifeProfile>& reconstructed_knives, const model::Catalog& catalog);
 }

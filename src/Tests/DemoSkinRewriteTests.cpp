@@ -1,5 +1,6 @@
 #include "Runtime/DemoSkinRewrite.hpp"
 #include "Core/SmartApply.hpp"
+#include "Core/Config.hpp"
 
 #include "json.hpp"
 
@@ -38,6 +39,162 @@ std::map<int, json> IndexItems(const nskinzcs2::runtime::DemoSkinRewritePass& pa
 void RunDemoSkinRewriteTests()
 {
     using namespace nskinzcs2;
+
+    // Independent application must merge only the clicked component, even
+    // when every other editor module contains pending or invalid changes.
+    {
+        model::Catalog catalog;
+        catalog.base_items = {{7, "AK-47"}, {16, "M4A4"}};
+        catalog.knife_items = {{515, "Butterfly"}, {507, "Karambit"}};
+        catalog.glove_items = {{5030, "Sport"}, {5031, "Driver"}, {5028, "Default T"}, {5029, "Default CT"}};
+        catalog.weapon_paint_kits = {{0, "None"}, {44, "Firearm only"}, {415, "Butterfly finish"}, {416, "Karambit finish"}};
+        catalog.weapon_paint_compatibility[7] = {44};
+        catalog.weapon_paint_compatibility[515] = {415};
+        catalog.weapon_paint_compatibility[507] = {416};
+        catalog.glove_paint_kits = {{0, "None"}, {10018, "Sport finish"}, {10019, "Driver finish"}};
+        catalog.glove_paint_compatibility[10018] = 5030;
+        catalog.glove_paint_compatibility[10019] = 5031;
+        const auto has = [](const auto& list, int id) {
+            return std::any_of(list.begin(), list.end(), [&](const auto& value) { return value.id == id; });
+        };
+        const auto knife_options = BuildScopedFinishOptions(catalog, ApplyScope::Knife, 515);
+        Check(has(knife_options, 415) && !has(knife_options, 44) && !has(knife_options, 416),
+            "knife finish options exclude firearm kits and other knife models");
+        Check(BuildScopedFinishOptions(catalog, ApplyScope::Knife, 0).size() == 1 &&
+            BuildScopedFinishOptions(catalog, ApplyScope::Glove, 0).size() == 1,
+            "unconfirmed model has no unfiltered finish fallback");
+        const auto glove_options = BuildScopedFinishOptions(catalog, ApplyScope::Glove, 5030);
+        Check(has(glove_options, 10018) && !has(glove_options, 10019) && !has(glove_options, 44),
+            "glove options are restricted to the confirmed glove model");
+
+        model::ConfigDocument applied, staged;
+        model::CosmeticProfile gun;
+        gun.enabled = true; gun.xuid = 123; gun.base_item = 7; gun.paint_kit = 44;
+        gun.stickers[0].kit_id = 10; gun.stickers[1].kit_id = 11;
+        applied.profiles.push_back(gun);
+        gun.xuid = 456; gun.base_item = 16; applied.profiles.push_back(gun);
+        model::KnifeProfile knife;
+        knife.enabled = true; knife.xuid = 123; knife.paint_kit = 415;
+        applied.knife_profiles.push_back(knife);
+        staged = applied;
+        staged.profiles[0].seed = 999;
+        staged.profiles[0].stickers[0].kit_id = 20;
+        staged.profiles[0].stickers[1].kit_id = 21;
+        staged.knife_profiles[0].seed = 42;
+        // Deliberately invalid unrelated targets must not block the selected item.
+        staged.glove_profiles.emplace_back(); staged.glove_profiles[0].enabled = true;
+        staged.keychain_profiles.emplace_back(); staged.keychain_profiles[0].enabled = true;
+        staged.map_remap.enabled = true; staged.map_remap.target_map_name = "pending_map";
+        std::unordered_map<std::uint64_t, GloveApplyCarrier> carriers {{123, {5030, false, 515}}};
+        const auto selected_gun = [](const auto& result) -> const model::CosmeticProfile& {
+            const auto found = std::find_if(result.apply_config.profiles.begin(), result.apply_config.profiles.end(),
+                [](const auto& value) { return value.xuid == 123 && value.base_item == 7; });
+            if (found == result.apply_config.profiles.end()) throw std::runtime_error("selected gun missing");
+            return *found;
+        };
+        auto plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Knife, 0}, carriers, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::None && !plan.NeedsDemo() && plan.live_changes == 1,
+            "knife finish button stays live despite staged stickers, maps and other modules");
+        Check(plan.apply_config.knife_profiles[0].seed == 42 && selected_gun(plan).seed == 0 &&
+            selected_gun(plan).stickers[0].kit_id == 10 && !plan.apply_config.map_remap.enabled &&
+            plan.apply_config.glove_profiles.empty() && plan.apply_config.keychain_profiles.empty(),
+            "knife apply excludes every unrelated staged editor field");
+        Check(std::any_of(plan.apply_config.profiles.begin(), plan.apply_config.profiles.end(),
+            [](const auto& value) { return value.xuid == 456 && value.base_item == 16 && value.seed == 0; }),
+            "another applied player remains intact");
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::WeaponFinish, 0}, carriers, {}, catalog);
+        Check(!plan.NeedsDemo() && selected_gun(plan).seed == 999 &&
+            selected_gun(plan).stickers[0].kit_id == 10 && selected_gun(plan).stickers[1].kit_id == 11 &&
+            plan.apply_config.knife_profiles[0].seed == 0, "gun finish preserves applied stickers and excludes pending knife");
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Sticker, 0, 1}, carriers, {}, catalog);
+        Check(plan.NeedsCosmeticRewrite() && selected_gun(plan).stickers[0].kit_id == 10 &&
+            selected_gun(plan).stickers[1].kit_id == 21 && selected_gun(plan).seed == 0,
+            "single sticker button preserves the other four slots and the applied gun finish");
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Sticker, 0, -1}, carriers, {}, catalog);
+        Check(selected_gun(plan).stickers[0].kit_id == 20 && selected_gun(plan).stickers[1].kit_id == 21,
+            "explicit all-five button applies only this firearm's stickers");
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Map}, carriers, {}, catalog);
+        Check(plan.reload_map && !plan.NeedsCosmeticRewrite() && plan.apply_config.map_remap.enabled &&
+            plan.apply_config.knife_profiles[0].seed == 0 && selected_gun(plan).stickers[0].kit_id == 10,
+            "map button reloads without applying pending cosmetics or requiring their XUIDs");
+        auto knife_changed = staged;
+        knife_changed.knife_profiles[0].model_definition = 507; // Hidden stale selection is not actual model proof.
+        plan = BuildScopedApplyPlan(applied, knife_changed, {ApplyScope::Knife, 0}, {}, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::ModelUnconfirmed, "finish-only cannot guess from hidden model");
+        knife_changed.knife_profiles[0].paint_kit = 44;
+        plan = BuildScopedApplyPlan(applied, knife_changed, {ApplyScope::Knife, 0}, carriers, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::IncompatiblePaint, "firearm paint cannot be applied to a knife");
+        knife_changed.knife_profiles[0].paint_kit = 416;
+        plan = BuildScopedApplyPlan(applied, knife_changed, {ApplyScope::Knife, 0}, carriers, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::IncompatiblePaint, "paint for a different knife cannot bypass detected model");
+        staged.glove_profiles[0].xuid = 123; staged.glove_profiles[0].paint_kit = 10018;
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Glove, 0}, carriers, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::None && !plan.NeedsDemo() &&
+            plan.apply_config.glove_profiles[0].model_definition == 5030,
+            "eligible original glove finish keeps confirmed model and applies live independently");
+        const auto live_glove_applied = plan.apply_config;
+        const auto later_sticker = BuildScopedApplyPlan(live_glove_applied, staged,
+            {ApplyScope::Sticker, 0, 1}, carriers, {}, catalog);
+        Check(later_sticker.rewrite_config.glove_profiles.size() == 1 &&
+            later_sticker.rewrite_config.glove_profiles[0].model_definition == 5030 &&
+            later_sticker.rewrite_config.glove_profiles[0].paint_kit == 10018 &&
+            later_sticker.rewrite_config.glove_profiles[0].mode == model::GloveProfileMode::ModelAndFinish &&
+            later_sticker.apply_config.glove_profiles[0].mode == model::GloveProfileMode::FinishOnly,
+            "a later sticker rebuild preserves already applied live gloves without enabling generated-Demo live mutation");
+        carriers[123].reconstructed = true;
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Glove, 0}, carriers, {}, catalog);
+        Check(plan.NeedsDemo() && plan.rewrite_config.glove_profiles[0].mode == model::GloveProfileMode::ModelAndFinish &&
+            plan.apply_config.glove_profiles[0].mode == model::GloveProfileMode::FinishOnly,
+            "generated glove reconstruction retains actual model without enabling runtime model mutation");
+        for (int definition : {5028, 5029})
+        {
+            carriers[123].definition = definition; staged.glove_profiles[0].paint_kit = 0;
+            plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Glove, 0}, carriers, {}, catalog);
+            Check(plan.NeedsDemo(), "default T and CT gloves never enter the live mutation route");
+        }
+        staged.knife_profiles[0].mode = model::KnifeProfileMode::ModelAndFinish;
+        staged.knife_profiles[0].model_definition = 515;
+        plan = BuildScopedApplyPlan(applied, staged, {ApplyScope::Knife, 0}, carriers, {}, catalog);
+        Check(plan.issue == ScopedApplyIssue::None && plan.NeedsDemo() &&
+            selected_gun(plan).stickers[0].kit_id == 10,
+            "knife model button reconstructs only the selected item plus previously applied settings");
+    }
+
+    {
+        const auto directory = std::filesystem::temp_directory_path() /
+            (L"nskinz-scoped-apply-" + std::to_wstring(GetCurrentProcessId()));
+        std::filesystem::create_directories(directory);
+        const auto editor = directory / "editor.json";
+        model::ConfigDocument staged;
+        staged.knife_profiles.emplace_back(); staged.knife_profiles[0].enabled = true;
+        staged.knife_profiles[0].xuid = 123; staged.knife_profiles[0].seed = 91;
+        ConfigStore::Save(editor, staged);
+        Check(ConfigStore::LoadApplied(editor).knife_profiles.empty(),
+            "legacy editor file is never treated as an applied runtime configuration");
+        auto applied = staged; applied.knife_profiles[0].seed = 7;
+        Check(ConfigStore::SaveApplied(editor, applied), "applied config publishes atomically");
+        Check(ConfigStore::Load(editor).knife_profiles[0].seed == 91 &&
+            ConfigStore::LoadApplied(editor).knife_profiles[0].seed == 7,
+            "editor save/load and runtime publication use separate files");
+        const auto pid = GetCurrentProcessId();
+        Check(runtime::PublishAppearanceProbeTargets(directory, pid, {123, 123, 0, 456}) &&
+            runtime::ReadAppearanceProbeTargets(directory, pid) == std::vector<std::uint64_t>({123, 456}),
+            "read-only model query roundtrips and normalizes targets");
+        Check(!runtime::PublishAppearanceProbeTargets(directory, pid, std::vector<std::uint64_t>(9, 123)),
+            "model query target count is bounded");
+        const auto query_file = directory / (L"nSkinzCS2.model-query-" + std::to_wstring(pid) + L".json");
+        { std::ofstream file(query_file); file << json{{"at", GetTickCount64() + 10000}, {"xuids", {123}}}; }
+        Check(runtime::ReadAppearanceProbeTargets(directory, pid).empty(), "future-dated model query is rejected");
+        Check(runtime::PublishGloveApplyCarriers(directory, pid, {{123, {5030, true, 515}}}), "publish both model carriers");
+        const auto carriers = runtime::ReadGloveApplyCarriers(directory, pid);
+        Check(carriers.at(123).definition == 5030 && carriers.at(123).knife_definition == 515 &&
+            carriers.at(123).reconstructed, "model proof transports glove and knife independently");
+        const auto carrier_file = directory / (L"nSkinzCS2.glove-routing-" + std::to_wstring(pid) + L".json");
+        { std::ofstream file(carrier_file); file << json{{"at", GetTickCount64()}, {"carriers", {{"123", {5030, false}}}}}; }
+        Check(runtime::ReadGloveApplyCarriers(directory, pid).at(123).knife_definition == 0,
+            "old carrier protocol does not invent a knife model");
+        std::filesystem::remove_all(directory);
+    }
 
     model::ConfigDocument config;
     Check(

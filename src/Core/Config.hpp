@@ -13,6 +13,9 @@ public:
     static model::ConfigDocument CreateDefault();
     static model::ConfigDocument Load(const std::filesystem::path& path);
     static bool Save(const std::filesystem::path& path, const model::ConfigDocument& document);
+    static std::filesystem::path AppliedPath(const std::filesystem::path& editor_path);
+    static model::ConfigDocument LoadApplied(const std::filesystem::path& editor_path);
+    static bool SaveApplied(const std::filesystem::path& editor_path, const model::ConfigDocument& document);
     static model::CosmeticProfile* FindMatchingProfile(
         model::ConfigDocument& document,
         std::uint64_t xuid,

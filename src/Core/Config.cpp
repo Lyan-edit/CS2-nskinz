@@ -1,6 +1,8 @@
 #include "Core/Config.hpp"
 #include "Core/Log.hpp"
 #include "Core/SmartApply.hpp"
+#include "Cs2/Catalog.hpp"
+#include <Windows.h>
 #include "UI/StickerPreviewPlacement.generated.hpp"
 
 #include "json.hpp"
@@ -634,6 +636,27 @@ bool nskinzcs2::ConfigStore::Save(const std::filesystem::path& path, const model
     return stream.good();
 }
 
+std::filesystem::path nskinzcs2::ConfigStore::AppliedPath(const std::filesystem::path& editor_path)
+{
+    return editor_path.parent_path() / (editor_path.stem().wstring() + L".applied.json");
+}
+
+nskinzcs2::model::ConfigDocument nskinzcs2::ConfigStore::LoadApplied(const std::filesystem::path& editor_path)
+{
+    const auto path = AppliedPath(editor_path);
+    std::error_code error;
+    return std::filesystem::is_regular_file(path, error) ? Load(path) : model::ConfigDocument {};
+}
+
+bool nskinzcs2::ConfigStore::SaveApplied(const std::filesystem::path& editor_path,
+    const model::ConfigDocument& document)
+{
+    const auto path = AppliedPath(editor_path);
+    const auto temporary = path.wstring() + L".tmp";
+    if (!Save(temporary, document)) return false;
+    return MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+}
+
 nskinzcs2::model::CosmeticProfile* nskinzcs2::ConfigStore::FindMatchingProfile(
     model::ConfigDocument& document,
     const std::uint64_t xuid,
@@ -908,4 +931,162 @@ const nskinzcs2::model::KnifeProfile* nskinzcs2::ConfigStore::FindMatchingKnifeP
         });
 
     return iterator == document.knife_profiles.rend() ? nullptr : &*iterator;
+}
+
+std::vector<nskinzcs2::model::NamedId> nskinzcs2::BuildScopedFinishOptions(
+    const model::Catalog& catalog, const ApplyScope scope, const int definition)
+{
+    std::vector<model::NamedId> result;
+    const bool known = scope == ApplyScope::Knife
+        ? definition == 42 || definition == 59 || std::any_of(catalog.knife_items.begin(), catalog.knife_items.end(),
+            [&](const auto& item) { return definition > 0 && item.id == definition; })
+        : std::any_of(catalog.glove_items.begin(), catalog.glove_items.end(),
+            [&](const auto& item) { return definition > 0 && item.id == definition; });
+    const auto& source = scope == ApplyScope::Knife ? catalog.weapon_paint_kits : catalog.glove_paint_kits;
+    for (const auto& paint : source)
+    {
+        bool compatible = paint.id == 0;
+        if (known && paint.id > 0)
+        {
+            if (scope == ApplyScope::Knife)
+                compatible = CatalogBuilder::CheckWeaponPaintCompatibility(&catalog, definition, paint.id) ==
+                    WeaponPaintCompatibility::Compatible;
+            else if (const auto found = catalog.glove_paint_compatibility.find(paint.id);
+                found != catalog.glove_paint_compatibility.end()) compatible = found->second == definition;
+        }
+        if (compatible) result.push_back(paint);
+    }
+    return result;
+}
+
+nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
+    const model::ConfigDocument& applied, const model::ConfigDocument& staged,
+    const ApplyTarget target, const std::unordered_map<std::uint64_t, GloveApplyCarrier>& carriers,
+    const std::vector<model::KnifeProfile>& reconstructed_knives, const model::Catalog& catalog)
+{
+    ScopedApplyPlan result;
+    result.apply_config = applied;
+    auto& merged = result.apply_config;
+    const auto fail = [&](const ScopedApplyIssue issue) { result.issue = issue; return result; };
+    const auto has_stickers = [](const auto& profile)
+    { return std::any_of(profile.stickers.begin(), profile.stickers.end(), [](const auto& s) { return s.kit_id > 0; }); };
+    const auto replace = [](auto& profiles, const auto& selected, auto matches)
+    {
+        std::erase_if(profiles, matches);
+        profiles.push_back(selected);
+    };
+    bool rebuild = false;
+    if (target.scope == ApplyScope::WeaponFinish || target.scope == ApplyScope::Sticker)
+    {
+        if (target.index >= staged.profiles.size() || target.sticker_slot >= 5)
+            return fail(ScopedApplyIssue::InvalidSelection);
+        const auto& selected = staged.profiles[target.index];
+        if (!selected.xuid) return fail(ScopedApplyIssue::MissingXuid);
+        auto matches = [&](const auto& p) { return p.xuid == selected.xuid && p.base_item == selected.base_item; };
+        auto found = std::find_if(merged.profiles.begin(), merged.profiles.end(), matches);
+        model::CosmeticProfile value;
+        if (found != merged.profiles.end()) value = *found;
+        value.xuid = selected.xuid; value.base_item = selected.base_item; value.name = selected.name;
+        if (target.scope == ApplyScope::WeaponFinish)
+        {
+            if (selected.enabled && selected.paint_kit > 0 &&
+                CatalogBuilder::CheckWeaponPaintCompatibility(&catalog, selected.base_item, selected.paint_kit) !=
+                    WeaponPaintCompatibility::Compatible) return fail(ScopedApplyIssue::IncompatiblePaint);
+            const auto stickers = value.stickers;
+            value = selected;
+            value.stickers = stickers;
+            if (!selected.enabled)
+            {
+                value.paint_kit = 0; value.explicit_vanilla_finish = false;
+                value.stat_trak = 0; value.custom_name.clear();
+            }
+            value.enabled = selected.enabled || has_stickers(value);
+        }
+        else
+        {
+            for (std::size_t slot = 0; slot < value.stickers.size(); ++slot)
+                if (target.sticker_slot < 0 || target.sticker_slot == static_cast<int>(slot))
+                    value.stickers[slot] = selected.enabled ? selected.stickers[slot] : model::StickerProfile {};
+            value.enabled = value.enabled || has_stickers(value);
+            rebuild = true;
+        }
+        replace(merged.profiles, value, matches);
+    }
+    else if (target.scope == ApplyScope::Knife || target.scope == ApplyScope::Glove)
+    {
+        const bool knife = target.scope == ApplyScope::Knife;
+        if (target.index >= (knife ? staged.knife_profiles.size() : staged.glove_profiles.size()))
+            return fail(ScopedApplyIssue::InvalidSelection);
+        const auto xuid = knife ? staged.knife_profiles[target.index].xuid : staged.glove_profiles[target.index].xuid;
+        if (!xuid) return fail(ScopedApplyIssue::MissingXuid);
+        const bool enabled = knife ? staged.knife_profiles[target.index].enabled : staged.glove_profiles[target.index].enabled;
+        const bool finish = knife ? staged.knife_profiles[target.index].mode == model::KnifeProfileMode::FinishOnly
+            : staged.glove_profiles[target.index].mode == model::GloveProfileMode::FinishOnly;
+        const auto carrier = carriers.find(xuid);
+        const int definition = finish ? (carrier == carriers.end() ? 0 : knife ? carrier->second.knife_definition : carrier->second.definition)
+            : knife ? staged.knife_profiles[target.index].model_definition : staged.glove_profiles[target.index].model_definition;
+        if (enabled && definition <= 0) return fail(ScopedApplyIssue::ModelUnconfirmed);
+        const int paint = knife ? staged.knife_profiles[target.index].paint_kit : staged.glove_profiles[target.index].paint_kit;
+        if (enabled && paint > 0)
+        {
+            const auto paints = BuildScopedFinishOptions(catalog, target.scope, definition);
+            if (std::none_of(paints.begin(), paints.end(), [&](const auto& p) { return p.id == paint; }))
+                return fail(ScopedApplyIssue::IncompatiblePaint);
+        }
+        if (knife)
+            replace(merged.knife_profiles, staged.knife_profiles[target.index], [&](const auto& p) { return p.xuid == xuid; });
+        else
+        {
+            auto value = staged.glove_profiles[target.index];
+            if (finish && enabled) value.model_definition = definition; // Verified carrier, never a hidden editor selection.
+            replace(merged.glove_profiles, value, [&](const auto& p) { return p.xuid == xuid; });
+        }
+        rebuild = !finish || (!knife && (carrier == carriers.end() || carrier->second.reconstructed ||
+            definition == 5028 || definition == 5029 || staged.glove_profiles[target.index].explicit_vanilla_finish));
+    }
+    else if (target.scope == ApplyScope::Keychain)
+    {
+        if (target.index >= staged.keychain_profiles.size()) return fail(ScopedApplyIssue::InvalidSelection);
+        const auto& value = staged.keychain_profiles[target.index];
+        if (!value.xuid) return fail(ScopedApplyIssue::MissingXuid);
+        replace(merged.keychain_profiles, value,
+            [&](const auto& p) { return p.xuid == value.xuid && p.base_item == value.base_item; });
+        rebuild = true;
+    }
+    else merged.map_remap = staged.map_remap;
+
+    static_cast<SmartApplyPlan&>(result) = BuildSmartApplyPlan(&applied, merged, carriers, reconstructed_knives);
+    // Preserve only models read from the current generated Demo. A stale hidden
+    // editor model is never treated as proof of a reconstructed knife.
+    for (const auto& p : merged.knife_profiles)
+    {
+        const auto carrier = carriers.find(p.xuid);
+        if (!p.enabled || p.mode != model::KnifeProfileMode::FinishOnly || carrier == carriers.end() ||
+            !carrier->second.reconstructed || carrier->second.knife_definition <= 0 ||
+            carrier->second.knife_definition == 42 || carrier->second.knife_definition == 59 ||
+            std::any_of(result.reconstructed_knives.begin(), result.reconstructed_knives.end(),
+                [&](const auto& saved) { return saved.xuid == p.xuid; })) continue;
+        model::KnifeProfile model;
+        model.enabled = true; model.xuid = p.xuid; model.mode = model::KnifeProfileMode::ModelAndFinish;
+        model.model_definition = carrier->second.knife_definition;
+        if (const auto* old = ConfigStore::FindMatchingKnifeProfile(applied, p.xuid))
+            if (CatalogBuilder::CheckWeaponPaintCompatibility(&catalog, model.model_definition, old->paint_kit) ==
+                WeaponPaintCompatibility::Compatible) model.paint_kit = old->paint_kit;
+        result.reconstructed_knives.push_back(model);
+    }
+    result.rewrite_config.knife_profiles = result.reconstructed_knives;
+    // A newly generated Demo makes glove carriers read-only. Previously
+    // applied live glove finishes must therefore be serialized as well,
+    // rather than relying on a live write after another item's rebuild.
+    result.rewrite_config.glove_profiles = merged.glove_profiles;
+    for (auto& p : result.rewrite_config.glove_profiles)
+    {
+        if (p.enabled && p.mode == model::GloveProfileMode::FinishOnly && p.model_definition > 0)
+            p.mode = model::GloveProfileMode::ModelAndFinish;
+    }
+    result.live_changes = !rebuild && target.scope != ApplyScope::Map ? 1 : 0;
+    result.rebuild_changes = rebuild ? 1 : 0;
+    result.reload_map = target.scope == ApplyScope::Map;
+    result.unknown_glove = false;
+    return result;
 }

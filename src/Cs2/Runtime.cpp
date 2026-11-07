@@ -84373,7 +84373,14 @@ void PollGameThreadStateModern()
     g_hook_state.client_entity_factory_requested.store(needs_runtime_wearable_factory);
     g_hook_state.skipped_knife_override_count.store(static_cast<int>(skipped_knife_override_xuids.size()));
 
-    if (enabled_profiles == 0 && !observe_demo_keychain)
+    const auto model_probe_targets = g_hook_state.app_state
+        ? g_hook_state.app_state->SnapshotAppearanceProbeTargets() : std::vector<std::uint64_t> {};
+    for (const auto xuid : model_probe_targets)
+    {
+        target_xuids.insert(xuid);
+        target_xuids_by_account[AccountIdFromXuid(xuid)] = xuid;
+    }
+    if (enabled_profiles == 0 && !observe_demo_keychain && model_probe_targets.empty())
     {
         trace.Step(L"No enabled profiles are active; deep entity scanning remains idle.");
         ResetRuntimeState({});
@@ -84392,7 +84399,7 @@ void PollGameThreadStateModern()
     // Four maintenance snapshots per second retain drop/seek recovery without
     // turning a cosmetic monitor into a frame-paced workload.
     constexpr std::uint64_t runtime_poll_interval_ms = 250ull;
-    g_hook_state.next_runtime_poll_millis.store(now + runtime_poll_interval_ms);
+    g_hook_state.next_runtime_poll_millis.store(now + (enabled_profiles == 0 ? 500ull : runtime_poll_interval_ms));
     trace.Step(L"Enabled profiles detected; resolving live entity scan ceiling.");
 
     const auto& catalog_definition_index =
@@ -86621,10 +86628,32 @@ void PollGameThreadStateModern()
         std::unordered_map<std::uint64_t, nskinzcs2::runtime::GloveApplyCarrier> carriers;
         for (const auto& [xuid, binding] : runtime_entities.players_by_xuid)
         {
-            int definition = 0;
+            int definition = 0, knife_definition = 0;
             auto* item = ResolveGloveItemView(binding.pawn_entity, g_hook_state.schema_offsets);
-            if (item && TryReadItemDefinitionIndex(item, g_hook_state.schema_offsets, definition))
-                carriers.emplace(xuid, nskinzcs2::runtime::GloveApplyCarrier {definition, generated_demo_skin});
+            if (item) TryReadItemDefinitionIndex(item, g_hook_state.schema_offsets, definition);
+            if (!definition)
+            {
+                std::uint8_t team = 0;
+                if (SafeReadField(binding.pawn_entity, g_hook_state.schema_offsets.base_entity_team_num, team))
+                    definition = nskinzcs2::runtime::ResolveDefaultGloveDefinitionForTeam(team);
+            }
+            for (const auto index : binding.owned_weapon_entity_indices)
+            {
+                if (index < 0 || static_cast<std::size_t>(index) >= entity_cache.size()) continue;
+                auto* weapon = entity_cache[static_cast<std::size_t>(index)];
+                const auto handle = binding.owned_weapon_handles_by_entity_index.find(index);
+                std::uint32_t actual_handle = kInvalidEntityHandle, owner = kInvalidEntityHandle;
+                int candidate = 0;
+                if (!weapon || handle == binding.owned_weapon_handles_by_entity_index.end() ||
+                    !TryReadHudBindingHandle(weapon, g_hook_state.schema_offsets, actual_handle) || actual_handle != handle->second ||
+                    !SafeReadField(weapon, g_hook_state.schema_offsets.base_owner_entity, owner) || owner != binding.pawn_handle ||
+                    !TryReadItemDefinitionIndex(ResolveWeaponItemView(weapon, g_hook_state.schema_offsets),
+                        g_hook_state.schema_offsets, candidate) ||
+                    !(candidate == 42 || candidate == 59 || knife_definition_indices.contains(candidate))) continue;
+                if (knife_definition && knife_definition != candidate) { knife_definition = 0; break; }
+                knife_definition = candidate;
+            }
+            carriers.emplace(xuid, nskinzcs2::runtime::GloveApplyCarrier {definition, generated_demo_skin, knife_definition});
         }
         g_hook_state.app_state->ReplaceGloveApplyCarriers(std::move(carriers));
     }
@@ -91270,10 +91299,10 @@ void nskinzcs2::RuntimeController::WorkerLoopImpl()
                 const auto config_path =
                     std::filesystem::path(module_path).parent_path() /
                     L"nSkinzCS2.json";
-                state_.ReplaceConfig(nskinzcs2::ConfigStore::Load(config_path));
+                state_.ReplaceConfig(nskinzcs2::ConfigStore::LoadApplied(config_path));
                 state_.RequestManualRefresh();
                 Logger::Info(
-                    L"Runtime reloaded nSkinzCS2.json and queued Update from the isolated UI/regression event.");
+                    L"Runtime reloaded nSkinzCS2.applied.json and queued Update from the isolated UI/regression event.");
             }
 
             if (automation_demo_command_event_ != nullptr &&
@@ -92921,6 +92950,8 @@ void nskinzcs2::RuntimeController::PublishDemoFilePathSidecar(
         if (length > 0 && length < path.size())
         {
             path.resize(length);
+            state_.ReplaceAppearanceProbeTargets(runtime::ReadAppearanceProbeTargets(
+                std::filesystem::path(path).parent_path(), GetCurrentProcessId()));
             runtime::PublishGloveApplyCarriers(std::filesystem::path(path).parent_path(),
                 GetCurrentProcessId(), state_.SnapshotGloveApplyCarriers());
         }

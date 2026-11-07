@@ -601,7 +601,7 @@ DWORD BootstrapThreadImpl(void* instance)
     }
 
     g_state->ReplaceCatalog(std::move(catalog));
-    g_state->ReplaceConfig(nskinzcs2::ConfigStore::Load(g_config_path));
+    g_state->ReplaceConfig(nskinzcs2::ConfigStore::LoadApplied(g_config_path));
 
     g_runtime = std::make_unique<nskinzcs2::RuntimeController>(*g_state, module);
     g_runtime->Start();

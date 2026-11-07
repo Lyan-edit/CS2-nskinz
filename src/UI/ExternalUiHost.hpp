@@ -16,12 +16,13 @@ bool LaunchExternalUiHost(HMODULE module, DWORD runtime_process_id);
 // or applying the editor's staged changes. This enables source Demo capture.
 bool RequestExternalRuntimeActivation(DWORD runtime_process_id);
 
-// Saves the complete editor document and asks the injected runtime to reload
-// it before its next manual refresh.
+// Saves the already merged applied document separately from editor settings,
+// then asks the injected runtime to reload it before its next manual refresh.
 bool PublishExternalConfigUpdate(
     DWORD runtime_process_id,
     const std::filesystem::path& config_path,
-    model::ConfigDocument& document);
+    model::ConfigDocument& document,
+    bool prepare_map = true);
 
 // Writes one local demo command beside the DLL and wakes the injected runtime.
 // The runtime validates and dispatches it on FRAME_RENDER_PASS; the isolated UI

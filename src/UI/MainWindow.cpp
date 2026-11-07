@@ -54,6 +54,7 @@ bool UiPreviewRetryAfterFailure();
 bool UiPreviewDocumentationCapture();
 bool UiPreviewKeychainCapture();
 bool UiPreviewMissingXuidCapture();
+int UiPreviewFinishCapture();
 #endif
 
 namespace
@@ -408,27 +409,6 @@ bool IsCompatibleGlovePaint(const Catalog& catalog, const int glove_item_id, con
     const auto compatible_glove_item = CompatibleGloveItemForPaint(catalog, paint_kit);
     return compatible_glove_item != 0 && compatible_glove_item == glove_item_id;
 }
-
-std::vector<NamedId> BuildVisibleGlovePaintList(const Catalog& catalog, const int glove_item_id)
-{
-    if (glove_item_id == 0)
-    {
-        return catalog.glove_paint_kits;
-    }
-
-    std::vector<NamedId> filtered;
-    filtered.reserve(catalog.glove_paint_kits.size());
-    for (const auto& paint : catalog.glove_paint_kits)
-    {
-        if (paint.id == 0 || IsCompatibleGlovePaint(catalog, glove_item_id, paint.id))
-        {
-            filtered.push_back(paint);
-        }
-    }
-
-    return filtered;
-}
-
 const char* GloveModeText(const GloveProfileMode mode)
 {
     switch (mode)
@@ -1195,6 +1175,7 @@ public:
         }
 
         working_config_dirty_ = false;
+        smart_applied_config_ = ConfigStore::LoadApplied(config_path_);
 #ifdef NSKINZCS2_UI_CAPTURE
         if (UiPreviewMissingXuidCapture())
         {
@@ -1679,6 +1660,7 @@ private:
         }
         cached_weapon_paints_.clear();
         cached_glove_paints_.clear();
+        cached_scoped_knife_paints_.clear();
     }
 
     const std::vector<NamedId>& CachedCompatibleWeaponPaints(
@@ -1712,9 +1694,62 @@ private:
 
         const auto [inserted, unused] = cached_glove_paints_.try_emplace(
             glove_item_id,
-            BuildVisibleGlovePaintList(catalog, glove_item_id));
+            nskinzcs2::BuildScopedFinishOptions(catalog, nskinzcs2::ApplyScope::Glove, glove_item_id));
         static_cast<void>(unused);
         return inserted->second;
+    }
+
+    const std::vector<NamedId>& CachedScopedKnifePaints(const Catalog& catalog, const int definition)
+    {
+        const auto [it, inserted] = cached_scoped_knife_paints_.try_emplace(definition);
+        if (inserted) it->second = nskinzcs2::BuildScopedFinishOptions(catalog, nskinzcs2::ApplyScope::Knife, definition);
+        return it->second;
+    }
+
+    void DrawDetectedModel(const Catalog& catalog, const nskinzcs2::ApplyScope scope, const int definition)
+    {
+        if (definition <= 0)
+        {
+            ImGui::TextWrapped("%s", Ui(UiTextId::ModelDetectionPending));
+            if (ImGui::SmallButton(Ui(UiTextId::RetryModelDetection)))
+            {
+                model_probe_activated_ = false;
+                model_query_published_ = 0;
+            }
+            return;
+        }
+        const auto& items = scope == nskinzcs2::ApplyScope::Knife ? catalog.knife_items : catalog.glove_items;
+        const auto found = std::find_if(items.begin(), items.end(), [&](const auto& item) { return item.id == definition; });
+        const auto name = found == items.end() ? std::to_string(definition) : found->name;
+        ImGui::Text(Ui(UiTextId::DetectedModel), name.c_str(), definition);
+        if (definition == 42 || definition == 59 || definition == 5028 || definition == 5029)
+            ImGui::TextWrapped("%s", Ui(UiTextId::DefaultModelFinishHint));
+    }
+
+    void DrawScopedApplyButton(const Catalog& catalog, const nskinzcs2::ApplyTarget target, const UiTextId label)
+    {
+        if (ImGui::Button(Ui(label), ImVec2(-1.0f, 30.0f))) StartScopedApply(catalog, target);
+    }
+
+    void StartScopedApply(const Catalog& catalog, const nskinzcs2::ApplyTarget target)
+    {
+        // Refresh proof on click as well as on the UI's throttled display poll.
+        const auto carriers = external_runtime_process_id_ != 0
+            ? nskinzcs2::runtime::ReadGloveApplyCarriers(config_path_.parent_path(), external_runtime_process_id_)
+            : state_.SnapshotGloveApplyCarriers();
+        const auto plan = nskinzcs2::BuildScopedApplyPlan(*smart_applied_config_, working_config_, target,
+            carriers, smart_reconstructed_knives_, catalog);
+        if (plan.issue != nskinzcs2::ScopedApplyIssue::None)
+        {
+            auto message = UiTextId::ApplyInvalidSelection;
+            if (plan.issue == nskinzcs2::ScopedApplyIssue::MissingXuid) message = UiTextId::ApplyMissingXuid;
+            else if (plan.issue == nskinzcs2::ScopedApplyIssue::ModelUnconfirmed) message = UiTextId::ModelDetectionPending;
+            else if (plan.issue == nskinzcs2::ScopedApplyIssue::IncompatiblePaint) message = UiTextId::WeaponPaintIncompatible;
+            demo_skin_rewrite_result_.detail = Wide(Ui(message));
+            return;
+        }
+        pending_apply_target_ = target;
+        StartSmartApply(catalog, plan);
     }
 
     void DrawMainWindow()
@@ -1725,16 +1760,21 @@ private:
         const auto catalog_snapshot = state_.SnapshotCatalogShared();
         const auto& catalog = *catalog_snapshot;
         EnsureCatalogUiCache(catalog_snapshot);
+        const auto model_now = GetTickCount64();
+        if (model_now - model_carriers_refreshed_ >= 500)
+        {
+            model_carriers_ = external_runtime_process_id_ != 0
+                ? nskinzcs2::runtime::ReadGloveApplyCarriers(config_path_.parent_path(), external_runtime_process_id_)
+                : state_.SnapshotGloveApplyCarriers();
+            model_carriers_refreshed_ = model_now;
+        }
+        model_probe_xuid_ = 0;
         if (smart_apply_capture_pending_)
         {
             if (!demo_skin_source_path_.empty())
             {
                 smart_apply_capture_pending_ = false;
-                const auto carriers = nskinzcs2::runtime::ReadGloveApplyCarriers(
-                    config_path_.parent_path(), external_runtime_process_id_);
-                StartSmartApply(catalog, nskinzcs2::BuildSmartApplyPlan(
-                    smart_applied_config_ ? &*smart_applied_config_ : nullptr, working_config_, carriers,
-                    smart_reconstructed_knives_));
+                if (pending_apply_target_) StartScopedApply(catalog, *pending_apply_target_);
             }
             else if (GetTickCount64() >= smart_apply_capture_deadline_)
             {
@@ -1809,7 +1849,11 @@ private:
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem(Ui(UiTextId::TabKnives)))
+            ImGuiTabItemFlags knife_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewFinishCapture() == 1 || UiPreviewFinishCapture() == 3) knife_tab_flags = ImGuiTabItemFlags_SetSelected;
+#endif
+            if (ImGui::BeginTabItem(Ui(UiTextId::TabKnives), nullptr, knife_tab_flags))
             {
                 ImGui::Columns(2, nullptr, false);
                 DrawKnifeProfileList();
@@ -1819,7 +1863,11 @@ private:
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem(Ui(UiTextId::TabGloves)))
+            ImGuiTabItemFlags glove_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewFinishCapture() == 2) glove_tab_flags = ImGuiTabItemFlags_SetSelected;
+#endif
+            if (ImGui::BeginTabItem(Ui(UiTextId::TabGloves), nullptr, glove_tab_flags))
             {
                 ImGui::Columns(2, nullptr, false);
                 DrawGloveProfileList();
@@ -1849,7 +1897,7 @@ private:
 
             if (ImGui::BeginTabItem(Ui(UiTextId::TabMaps)))
             {
-                DrawMapRemapEditor(status);
+                DrawMapRemapEditor(catalog, status);
                 ImGui::EndTabItem();
             }
 
@@ -1864,6 +1912,16 @@ private:
             }
 
             ImGui::EndTabBar();
+        }
+
+        if (external_runtime_process_id_ != 0 && model_now - model_query_published_ >= 1000)
+        {
+            nskinzcs2::runtime::PublishAppearanceProbeTargets(config_path_.parent_path(),
+                external_runtime_process_id_, model_probe_xuid_ ? std::vector<std::uint64_t>{model_probe_xuid_}
+                                                               : std::vector<std::uint64_t>{});
+            model_query_published_ = model_now;
+            if (model_probe_xuid_ && !model_probe_activated_)
+                model_probe_activated_ = nskinzcs2::ui::RequestExternalRuntimeActivation(external_runtime_process_id_);
         }
 
         ImGui::Separator();
@@ -2142,6 +2200,8 @@ private:
             PushWorkingConfig();
         }
         DrawFieldHelp(UiTextId::NameTagHelp);
+        DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::WeaponFinish, static_cast<std::size_t>(selected_profile_)},
+            UiTextId::ApplyWeaponFinish);
     }
 
     void DrawKnifeProfileList()
@@ -2225,15 +2285,21 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeTargetVanillaHint));
         }
 
-        const auto& knife_paints =
-            profile.mode == KnifeProfileMode::ModelAndFinish && profile.model_definition > 0
-                ? CachedCompatibleWeaponPaints(catalog, profile.model_definition)
-                : catalog.weapon_paint_kits;
-        const auto knife_paint_compatibility =
-            profile.mode == KnifeProfileMode::ModelAndFinish && profile.model_definition > 0
-                ? nskinzcs2::CatalogBuilder::CheckWeaponPaintCompatibility(
-                    &catalog, profile.model_definition, profile.paint_kit)
-                : nskinzcs2::WeaponPaintCompatibility::Compatible;
+        const bool finish_only = profile.mode == KnifeProfileMode::FinishOnly;
+        const auto carrier = model_carriers_.find(profile.xuid);
+        const int current_model = finish_only
+            ? (carrier == model_carriers_.end() ? 0 : carrier->second.knife_definition)
+            : profile.model_definition;
+        if (finish_only)
+        {
+            model_probe_xuid_ = profile.xuid;
+            DrawDetectedModel(catalog, nskinzcs2::ApplyScope::Knife, current_model);
+        }
+        // No unfiltered fallback: an unconfirmed model cannot offer another
+        // knife's finishes or firearm paint kits.
+        const auto& knife_paints = CachedScopedKnifePaints(catalog, current_model);
+        const auto knife_paint_compatibility = nskinzcs2::CatalogBuilder::CheckWeaponPaintCompatibility(
+            &catalog, current_model, profile.paint_kit);
         const auto blocked_knife_paint =
             knife_paint_compatibility != nskinzcs2::WeaponPaintCompatibility::Compatible;
         std::string blocked_knife_preview;
@@ -2247,6 +2313,7 @@ private:
                 (found != catalog.weapon_paint_kits.end() ? found->name : std::string {}) +
                 " (" + std::to_string(profile.paint_kit) + ")";
         }
+        ImGui::BeginDisabled(current_model <= 0);
         if (ComboFinishByIntent(
                 Ui(UiTextId::PaintKit),
                 knife_paints,
@@ -2257,9 +2324,8 @@ private:
         {
             PushWorkingConfig();
         }
-        if (profile.mode == KnifeProfileMode::ModelAndFinish &&
-            profile.model_definition > 0 &&
-            blocked_knife_paint)
+        ImGui::EndDisabled();
+        if (current_model > 0 && blocked_knife_paint)
         {
             ImGui::TextWrapped("%s", Ui(UiTextId::WeaponPaintIncompatible));
         }
@@ -2315,6 +2381,10 @@ private:
             if (!status.knife_runtime_reason.empty())
                 ImGui::TextWrapped("%s", Narrow(status.knife_runtime_reason).c_str());
         }
+        ImGui::BeginDisabled(profile.enabled && finish_only && current_model <= 0);
+        DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::Knife, static_cast<std::size_t>(selected_knife_profile_)},
+            UiTextId::ApplyKnife);
+        ImGui::EndDisabled();
     }
 
     void DrawGloveProfileList()
@@ -2411,24 +2481,32 @@ private:
                 PushWorkingConfig();
             }
         }
-        else
-        {
-            ImGui::TextDisabled("%s", Ui(UiTextId::GloveModel));
-            ImGui::SameLine();
-            ImGui::TextUnformatted(Ui(UiTextId::CurrentLiveWearableModel));
-        }
-
+        const auto carrier = model_carriers_.find(profile.xuid);
         const auto glove_item_id =
             profile.mode == GloveProfileMode::ModelAndFinish
                 ? profile.model_definition
-                : 0;
+                : (carrier == model_carriers_.end() ? 0 : carrier->second.definition);
+        if (profile.mode == GloveProfileMode::FinishOnly)
+        {
+            model_probe_xuid_ = profile.xuid;
+            DrawDetectedModel(catalog, nskinzcs2::ApplyScope::Glove, glove_item_id);
+        }
         const auto& glove_paint_list = CachedCompatibleGlovePaints(catalog, glove_item_id);
+        const bool blocked_glove_paint = profile.paint_kit > 0 &&
+            std::none_of(glove_paint_list.begin(), glove_paint_list.end(),
+                [&](const auto& paint) { return paint.id == profile.paint_kit; });
+        std::string blocked_glove_preview;
+        if (blocked_glove_paint)
+            blocked_glove_preview = std::string(Ui(UiTextId::WeaponPaintBlocked)) + " " +
+                LookupName(catalog.glove_paint_kits, profile.paint_kit) + " (" + std::to_string(profile.paint_kit) + ")";
+        ImGui::BeginDisabled(glove_item_id <= 0);
         if (ComboFinishByIntent(
                 Ui(UiTextId::PaintKit),
                 glove_paint_list,
                 profile.paint_kit,
                 profile.explicit_vanilla_finish,
-                12))
+                12,
+                blocked_glove_paint ? blocked_glove_preview.c_str() : nullptr))
         {
             if (profile.mode == GloveProfileMode::ModelAndFinish && profile.paint_kit != 0)
             {
@@ -2440,6 +2518,10 @@ private:
             }
             PushWorkingConfig();
         }
+        ImGui::EndDisabled();
+        if (profile.paint_kit > 0 && glove_item_id > 0 &&
+            !IsCompatibleGlovePaint(catalog, glove_item_id, profile.paint_kit))
+            ImGui::TextWrapped("%s", Ui(UiTextId::GlovePaintMismatch));
 
         if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
         {
@@ -2516,14 +2598,14 @@ private:
         {
             ImGui::TextColored(ImVec4(0.42f, 0.82f, 0.58f, 1.0f), "%s", Ui(UiTextId::GloveCarrierRuntimeWearable));
         }
-        else if (profile.mode == GloveProfileMode::ModelAndFinish && !status.client_entity_factory_resolved)
-        {
-            ImGui::TextColored(ImVec4(0.94f, 0.42f, 0.25f, 1.0f), "%s", Ui(UiTextId::GloveFactoryUnavailable));
-        }
         else
         {
             ImGui::TextColored(ImVec4(0.93f, 0.77f, 0.32f, 1.0f), "%s", Ui(UiTextId::GloveWaitingForBind));
         }
+        ImGui::BeginDisabled(profile.enabled && profile.mode == GloveProfileMode::FinishOnly && glove_item_id <= 0);
+        DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::Glove, static_cast<std::size_t>(selected_glove_profile_)},
+            UiTextId::ApplyGlove);
+        ImGui::EndDisabled();
     }
 
     void DrawKeychainProfileList(const Catalog& catalog)
@@ -2617,6 +2699,8 @@ private:
 
         ImGui::Spacing();
         ImGui::TextWrapped("%s", Ui(UiTextId::KeychainRuntimeDescription));
+        DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::Keychain, static_cast<std::size_t>(selected_keychain_profile_)},
+            UiTextId::ApplyKeychain);
     }
 
     void DrawKeychainPlacementPreview(const Catalog& catalog)
@@ -2831,7 +2915,7 @@ private:
             L" CS2 map entries detected.");
     }
 
-    void DrawMapRemapEditor(const nskinzcs2::runtime::Status& status)
+    void DrawMapRemapEditor(const Catalog& catalog, const nskinzcs2::runtime::Status& status)
     {
         if (!workshop_scan_attempted_) RefreshWorkshopMaps();
         auto& profile = working_config_.map_remap;
@@ -3002,6 +3086,7 @@ private:
         }
         ImGui::Columns(1);
         ImGui::Separator();
+        DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::Map}, UiTextId::ApplyMap);
         ImGui::TextWrapped("%s", Ui(UiTextId::MapSecondLoadHelp));
 
         if (status.map_remap_enabled || status.map_remap_hooks_installed)
@@ -3075,7 +3160,7 @@ private:
         if (smart_apply_rebuild_pending_)
         {
             smart_apply_rebuild_pending_ = false;
-            if (!PublishWorkingConfigUpdate(L"Smart Apply"))
+            if (!PublishAppliedConfigUpdate(pending_apply_config_, L"Current item Demo reconstruction", pending_prepare_map_))
             {
                 demo_skin_rewrite_result_.detail += L" Config publication failed. Press Smart Apply to retry.";
                 return;
@@ -3092,9 +3177,7 @@ private:
             return;
         }
         demo_skin_rewrite_result_.detail += L" The playdemo command was queued in CS2.";
-        smart_applied_config_ = working_config_;
         smart_reconstructed_knives_ = pending_reconstructed_knives_;
-        smart_plan_dirty_ = true;
         Logger::Info(demo_skin_rewrite_result_.detail);
     }
 
@@ -3113,8 +3196,7 @@ private:
         if (!nskinzcs2::runtime::IsGeneratedDemoSkinPath(*observed))
         {
             smart_reconstructed_knives_.clear();
-            smart_applied_config_.reset();
-            smart_plan_dirty_ = true;
+            // Keep the last published runtime settings; only playback recipes reset.
             if (*observed != demo_skin_source_path_)
             {
                 demo_skin_rewrite_result_.resolved_sticker_placements.clear();
@@ -3144,9 +3226,8 @@ private:
             if (edited_source != demo_skin_source_path_)
             {
                 demo_skin_rewrite_result_.resolved_sticker_placements.clear();
-                smart_applied_config_.reset();
+                // Keep the last published runtime settings; only playback recipes reset.
                 smart_reconstructed_knives_.clear();
-                smart_plan_dirty_ = true;
             }
             demo_skin_source_path_ = edited_source;
         }
@@ -3193,6 +3274,10 @@ private:
             else
             {
                 const auto config = working_config_;
+                pending_apply_config_ = config;
+                pending_prepare_map_ = true;
+                smart_apply_rebuild_pending_ = true;
+                smart_apply_source_ = demo_skin_source_path_;
                 const auto rewrite_catalog = catalog;
                 const auto source = demo_skin_source_path_;
                 const auto process_id = external_runtime_process_id_;
@@ -3852,87 +3937,51 @@ private:
             resolved_placement);
         ImGui::TextWrapped("%s", Ui(UiTextId::StickerExistingSlotReplacementHelp));
 
+        DrawScopedApplyButton(catalog,
+            {nskinzcs2::ApplyScope::Sticker, static_cast<std::size_t>(selected_profile_), selected_sticker},
+            UiTextId::ApplyStickerSlot);
+        DrawScopedApplyButton(catalog,
+            {nskinzcs2::ApplyScope::Sticker, static_cast<std::size_t>(selected_profile_), -1},
+            UiTextId::ApplyAllWeaponStickers);
         ImGui::Columns(1);
         ImGui::PopID();
     }
 
     void DrawActions(const Catalog& catalog)
     {
-        const auto now = GetTickCount64();
-        if (smart_plan_dirty_ || now - smart_plan_refreshed_ >= 1000)
-        {
-            const auto carriers = nskinzcs2::runtime::ReadGloveApplyCarriers(
-                config_path_.parent_path(), external_runtime_process_id_);
-            smart_plan_ = nskinzcs2::BuildSmartApplyPlan(
-                smart_applied_config_ ? &*smart_applied_config_ : nullptr, working_config_, carriers,
-                smart_reconstructed_knives_);
-            smart_plan_refreshed_ = now;
-            smart_plan_dirty_ = false;
-        }
-        const auto& plan = smart_plan_;
-        ImGui::Text(Ui(UiTextId::SmartApplyRoutes), plan.live_changes, plan.rebuild_changes,
-            Ui(plan.reload_map ? UiTextId::Yes : UiTextId::No));
-        if (plan.unknown_glove) ImGui::TextWrapped("%s", Ui(UiTextId::SmartApplyUnknownGlove));
-        const float width = ImGui::GetContentRegionAvail().x / 3.0f;
-        if (ImGui::Button(Ui(UiTextId::SmartApply), ImVec2(width - 4.0f, 30.0f)))
-        {
-            StartSmartApply(catalog, plan);
-        }
-
-        ImGui::SameLine();
+        static_cast<void>(catalog);
+        ImGui::TextWrapped("%s", Ui(UiTextId::IndependentApplyHint));
+        const float width = ImGui::GetContentRegionAvail().x / 2.0f;
         if (ImGui::Button(Ui(UiTextId::Save), ImVec2(width - 4.0f, 30.0f)))
         {
-            if (working_config_.map_remap.enabled && !workshop_scan_attempted_) RefreshWorkshopMaps();
-            std::wstring validation_issue;
-            if (!TryValidateKnifeProfilesForApply(working_config_, catalog, validation_issue) ||
-                !TryValidateGloveProfilesForApply(working_config_, catalog, validation_issue) ||
-                !TryValidateKeychainProfilesForApply(working_config_, catalog, validation_issue) ||
-                !TryValidateMapRemapForApply(working_config_, validation_issue))
-            {
-                Logger::Warn(L"UI rejected config save: " + validation_issue);
-            }
-            else
-            {
-                ConfigStore::Save(config_path_, working_config_);
-                Logger::Info(L"UI saved the staged config to nSkinzCS2.json.");
-            }
+            ConfigStore::Save(config_path_, working_config_);
+            Logger::Info(L"UI saved editor settings without changing the applied configuration.");
         }
-
         ImGui::SameLine();
         if (ImGui::Button(Ui(UiTextId::Load), ImVec2(width - 4.0f, 30.0f)))
         {
             working_config_ = ConfigStore::Load(config_path_);
             EnsureSelection();
             working_config_dirty_ = true;
-            smart_plan_dirty_ = true;
-            Logger::Info(L"UI loaded config into the editor only. Press Smart Apply to apply it.");
+            Logger::Info(L"UI loaded settings into the editor only.");
         }
-
         if (working_config_dirty_)
-        {
-            ImGui::TextColored(
-                ImVec4(0.94f, 0.68f, 0.25f, 1.0f),
-                "%s",
-                Ui(UiTextId::EditorStagedOnly));
-        }
-        else
-        {
-            ImGui::TextDisabled("%s", Ui(UiTextId::EditorMatchesRuntime));
-        }
+            ImGui::TextColored(ImVec4(0.94f, 0.68f, 0.25f, 1.0f), "%s", Ui(UiTextId::EditorStagedOnly));
         if (demo_skin_rewrite_future_.valid())
             ImGui::TextWrapped("%s", Ui(UiTextId::SmartApplyRebuilding));
         else if (!demo_skin_rewrite_result_.detail.empty())
             ImGui::TextWrapped("%s", Narrow(demo_skin_rewrite_result_.detail).c_str());
     }
 
-    void StartSmartApply(const Catalog& catalog, const nskinzcs2::SmartApplyPlan& plan)
+    void StartSmartApply(const Catalog& catalog, const nskinzcs2::ScopedApplyPlan& plan)
     {
         if (!plan.NeedsDemo())
         {
-            if (PublishWorkingConfigUpdate(L"Smart Apply"))
+            auto applied = plan.apply_config;
+            if (PublishAppliedConfigUpdate(applied, L"Current item"))
             {
-                smart_applied_config_ = working_config_;
                 smart_reconstructed_knives_ = plan.reconstructed_knives;
+                demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::CurrentItemAppliedLive));
             }
             return;
         }
@@ -3968,10 +4017,10 @@ private:
                 demo_skin_rewrite_result_ = std::move(reload);
                 return;
             }
-            if (PublishWorkingConfigUpdate(L"Smart Apply") &&
+            auto applied = plan.apply_config;
+            if (PublishAppliedConfigUpdate(applied, L"Current item", plan.reload_map) &&
                 nskinzcs2::ui::PublishExternalDemoCommand(process, config_path_.parent_path(), reload.playdemo_command))
             {
-                smart_applied_config_ = working_config_;
                 smart_reconstructed_knives_ = plan.reconstructed_knives;
                 demo_skin_rewrite_result_ = std::move(reload);
             }
@@ -3980,6 +4029,8 @@ private:
             return;
         }
         smart_apply_rebuild_pending_ = true;
+        pending_apply_config_ = plan.apply_config;
+        pending_prepare_map_ = false;
         pending_reconstructed_knives_ = plan.reconstructed_knives;
         smart_apply_source_ = source;
         demo_skin_rewrite_result_ = {};
@@ -4078,55 +4129,40 @@ private:
     void PushWorkingConfig()
     {
         working_config_dirty_ = true;
-        smart_plan_dirty_ = true;
     }
 
-    bool PublishWorkingConfigUpdate(const wchar_t* source)
+    bool PublishAppliedConfigUpdate(ConfigDocument& requested, const wchar_t* source, const bool prepare_map = false)
     {
-        // Preserve selected-map metadata/migration before an explicit apply,
-        // while keeping optional disk discovery out of UI startup.
-        if (working_config_.map_remap.enabled && !workshop_scan_attempted_) RefreshWorkshopMaps();
         const auto catalog_snapshot = state_.SnapshotCatalogShared();
         const auto& catalog = *catalog_snapshot;
         std::wstring validation_issue;
-        if (!TryValidateKnifeProfilesForApply(working_config_, catalog, validation_issue) ||
-            !TryValidateGloveProfilesForApply(working_config_, catalog, validation_issue) ||
-            !TryValidateKeychainProfilesForApply(working_config_, catalog, validation_issue) ||
-            !TryValidateMapRemapForApply(working_config_, validation_issue))
+        if (!TryValidateKnifeProfilesForApply(requested, catalog, validation_issue) ||
+            !TryValidateGloveProfilesForApply(requested, catalog, validation_issue) ||
+            !TryValidateKeychainProfilesForApply(requested, catalog, validation_issue) ||
+            !TryValidateMapRemapForApply(requested, validation_issue))
         {
-            Logger::Warn(L"UI rejected staged config update: " + validation_issue);
+            demo_skin_rewrite_result_.detail = validation_issue;
+            Logger::Warn(L"UI rejected current item update: " + validation_issue);
             return false;
         }
-
         const bool external_update = external_runtime_process_id_ != 0;
-        const bool update_published = !external_update ||
-            nskinzcs2::ui::PublishExternalConfigUpdate(
-                external_runtime_process_id_,
-                config_path_,
-                working_config_);
-        if (!update_published)
+        const bool published = external_update
+            ? nskinzcs2::ui::PublishExternalConfigUpdate(external_runtime_process_id_, config_path_, requested, prepare_map)
+            : ConfigStore::SaveApplied(config_path_, requested);
+        if (!published)
         {
-            Logger::Warn(
-                L"UI could not publish the staged config to the injected runtime; "
-                L"the editor remains dirty.");
+            demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::ApplyPublicationFailed));
+            Logger::Warn(L"UI could not publish the selected item.");
             return false;
         }
-
-        if (!external_update)
-        {
-            Logger::Warn(L"Unexpected in-process UI update path used.");
-        }
-        state_.ReplaceConfig(working_config_);
-        if (!external_update)
-        {
-            state_.RequestManualRefresh();
-        }
-        working_config_dirty_ = false;
-        smart_plan_dirty_ = true;
-        Logger::Info(
-            std::wstring(external_update ? L"External UI" : L"UI") +
-            L" saved and published staged config via " +
-            (source != nullptr ? source : L"Update") + L".");
+        state_.ReplaceConfig(requested);
+        if (!external_update) state_.RequestManualRefresh();
+        smart_applied_config_ = requested;
+        // Other editor fields are still staged. Never copy them into this transaction.
+        const auto remaining = nskinzcs2::BuildSmartApplyPlan(&requested, working_config_, model_carriers_,
+            smart_reconstructed_knives_);
+        working_config_dirty_ = remaining.live_changes > 0 || remaining.NeedsDemo();
+        Logger::Info(std::wstring(L"UI published scoped configuration via ") + source + L".");
         return true;
     }
 
@@ -4183,11 +4219,11 @@ private:
         case kAutomatedRuntimeRefreshMessage:
             if (external_runtime_process_id_ != 0)
             {
-                auto config = state_.SnapshotConfig();
+                auto config = *smart_applied_config_;
                 if (nskinzcs2::ui::PublishExternalConfigUpdate(
                     external_runtime_process_id_,
                     config_path_,
-                    config))
+                    config, false))
                 {
                     state_.ReplaceConfig(config);
                 }
@@ -4238,6 +4274,12 @@ private:
     std::vector<NamedId> cached_selectable_knife_models_;
     std::unordered_map<int, std::vector<NamedId>> cached_weapon_paints_;
     std::unordered_map<int, std::vector<NamedId>> cached_glove_paints_;
+    std::unordered_map<int, std::vector<NamedId>> cached_scoped_knife_paints_;
+    std::unordered_map<std::uint64_t, nskinzcs2::GloveApplyCarrier> model_carriers_;
+    ULONGLONG model_carriers_refreshed_ = 0;
+    ULONGLONG model_query_published_ = 0;
+    std::uint64_t model_probe_xuid_ = 0;
+    bool model_probe_activated_ = false;
     bool working_config_dirty_ = false;
     int selected_profile_ = 0;
     int selected_knife_profile_ = 0;
@@ -4246,15 +4288,15 @@ private:
     int selected_workshop_map_ = -1;
     int selected_weapon_sticker_ = 0;
     std::optional<ConfigDocument> smart_applied_config_;
+    ConfigDocument pending_apply_config_;
+    bool pending_prepare_map_ = false;
+    std::optional<nskinzcs2::ApplyTarget> pending_apply_target_;
     std::vector<KnifeProfile> smart_reconstructed_knives_;
     std::vector<KnifeProfile> pending_reconstructed_knives_;
     bool smart_apply_rebuild_pending_ = false;
     bool smart_apply_capture_pending_ = false;
     ULONGLONG smart_apply_capture_deadline_ = 0;
     std::filesystem::path smart_apply_source_;
-    nskinzcs2::SmartApplyPlan smart_plan_;
-    ULONGLONG smart_plan_refreshed_ = 0;
-    bool smart_plan_dirty_ = true;
     bool keychain_preview_legacy_ = false;
     ImVec2 keychain_drag_offset_ {};
     bool sticker_preview_dragging_ = false;

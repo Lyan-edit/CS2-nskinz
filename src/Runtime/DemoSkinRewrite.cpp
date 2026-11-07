@@ -802,7 +802,7 @@ bool nskinzcs2::runtime::PublishGloveApplyCarriers(
 {
     json entries = json::object();
     for (const auto& [xuid, carrier] : carriers)
-        entries[std::to_string(xuid)] = {carrier.definition, carrier.reconstructed};
+        entries[std::to_string(xuid)] = {carrier.definition, carrier.reconstructed, carrier.knife_definition};
     const auto file = directory / (L"nSkinzCS2.glove-routing-" + std::to_wstring(process_id) + L".json");
     const auto temporary = file.wstring() + L".tmp";
     {
@@ -826,10 +826,45 @@ nskinzcs2::runtime::ReadGloveApplyCarriers(const std::filesystem::path& director
         const auto now = GetTickCount64();
         if (timestamp > now || now - timestamp > 5000) return carriers;
         for (const auto& [key, entry] : value.at("carriers").items())
-            carriers.emplace(std::stoull(key), GloveApplyCarrier {entry.at(0).get<int>(), entry.at(1).get<bool>()});
+            carriers.emplace(std::stoull(key), GloveApplyCarrier {entry.at(0).get<int>(), entry.at(1).get<bool>(),
+                entry.size() > 2 ? entry.at(2).get<int>() : 0});
     }
     catch (...) { carriers.clear(); }
     return carriers;
+}
+
+bool nskinzcs2::runtime::PublishAppearanceProbeTargets(const std::filesystem::path& directory,
+    const DWORD process_id, const std::vector<std::uint64_t>& xuids)
+{
+    if (!process_id || xuids.size() > 8) return false;
+    const auto file = directory / (L"nSkinzCS2.model-query-" + std::to_wstring(process_id) + L".json");
+    const auto temporary = file.wstring() + L".tmp";
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        if (!stream) return false;
+        stream << json {{"at", GetTickCount64()}, {"xuids", xuids}}.dump();
+        if (!stream) return false;
+    }
+    return MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+}
+
+std::vector<std::uint64_t> nskinzcs2::runtime::ReadAppearanceProbeTargets(
+    const std::filesystem::path& directory, const DWORD process_id)
+{
+    try
+    {
+        const auto file = directory / (L"nSkinzCS2.model-query-" + std::to_wstring(process_id) + L".json");
+        const auto value = json::parse(ReadTextFileLimited(file, 4096));
+        const auto timestamp = value.at("at").get<ULONGLONG>();
+        const auto now = GetTickCount64();
+        auto targets = value.at("xuids").get<std::vector<std::uint64_t>>();
+        if (timestamp > now || now - timestamp > 4000 || targets.size() > 8) return {};
+        std::erase(targets, std::uint64_t {0});
+        std::sort(targets.begin(), targets.end());
+        targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+        return targets;
+    }
+    catch (...) { return {}; }
 }
 
 nskinzcs2::runtime::DemoSkinRewriteResult nskinzcs2::runtime::PrepareDemoReload(

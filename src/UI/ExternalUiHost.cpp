@@ -359,19 +359,26 @@ bool nskinzcs2::ui::RequestExternalRuntimeActivation(const DWORD runtime_process
 bool nskinzcs2::ui::PublishExternalConfigUpdate(
     const DWORD runtime_process_id,
     const std::filesystem::path& config_path,
-    model::ConfigDocument& document)
+    model::ConfigDocument& document,
+    const bool prepare_map)
 {
     if (runtime_process_id == 0)
     {
         return false;
     }
-    PrepareExternalRadarOverlay(runtime_process_id, document.map_remap);
-    if (!ConfigStore::Save(config_path, document))
+    // A missing bridge must not leave a supposedly rejected transaction on
+    // disk for a later read-only model query to activate accidentally.
+    const auto event = OpenEventW(EVENT_MODIFY_STATE, FALSE, RuntimeEventName(runtime_process_id).c_str());
+    if (event == nullptr) return false;
+    if (prepare_map) PrepareExternalRadarOverlay(runtime_process_id, document.map_remap);
+    if (!ConfigStore::SaveApplied(config_path, document))
     {
+        CloseHandle(event);
         return false;
     }
-
-    return RequestExternalRuntimeActivation(runtime_process_id);
+    const bool signaled = SetEvent(event) != FALSE;
+    CloseHandle(event);
+    return signaled;
 }
 
 bool nskinzcs2::ui::PublishExternalDemoCommand(

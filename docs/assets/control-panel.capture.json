@@ -1,21 +1,21 @@
 {
-  "version": "0.7.1",
+  "version": "0.7.2",
   "method": "Unmodified D3D11 backbuffer PNG from the real MainWindow implementation; UiHarness --documentation",
   "example_configuration": "AK-47, Case Hardened, five identical Titan (Holo) stickers; slot 1 custom placement enabled at zero delta",
   "game_connected": false,
   "keyboard_events_injected": false,
   "width": 1384,
   "height": 1421,
-  "image_sha256": "b05b470d845633a4f606d9f34fc353a7419b96ea52ef9b1c7b6dcd1a27a9dcc4",
+  "image_sha256": "c608c8706043298a6d2105744b5dc64ca4194cbb2fd41d588bf528515df6a9a4",
   "source_sha256_lf": {
-    "src/UI/MainWindow.cpp": "e5c6202a2efcbd08da174f10add4a6454f7a4ffa973f45ec94fb23d7996e8c56",
+    "src/UI/MainWindow.cpp": "c23453b234a1bff5990d2f6e5048e22fd610b24284cec4578d54f28d2ab2616a",
     "src/UI/MainWindow.hpp": "55aa90f0f9500624a6525de69633bf8a4bb7f2e0cbf46969660e8cf552d7fe2d",
-    "src/UI/UiText.hpp": "3beff19210a73871cc2e8e9ac5b17b8004745021ae41461c049145b3c39317f6",
+    "src/UI/UiText.hpp": "f6b74cbee845ca5b5e01908e2458f1012999d1fed6889c697589f564aaf3e402",
     "src/UI/WeaponPreviewGeometry.generated.hpp": "b93f6a6304a8761cab6598dc16cf98893b41762d98c088f411035580c73696d8",
     "src/UI/StickerPreviewPlacement.generated.hpp": "1893d18b71b42235eb8d8dd4da85d142966e602439b7c083179ea3810b596dca",
     "src/UI/StickerPreviewPlacement.generated.cpp": "9e882ca352f249f8d6726dc3bf03928d9f9876aadcf15673bfa70e001b3d837f",
     "src/UI/StickerPreviewMetrics.hpp": "3e76bedffd5f728d0de213c07680beca94045ae5d11f8f4d0630fce08f6e1fcf",
-    "tools/UiPanelHarness.cpp": "f0ff3f33e39a54c5eedf721486c0a3c7cc35a80fa138932c71486240833b4b1e",
+    "tools/UiPanelHarness.cpp": "ed318c67a541e66a693769f77dc25b6250c4d602d4007931c5cd007789b8ab57",
     "nSkinzCS2.UiHarness.vcxproj": "8b760d6997356ced172a6e62019d09215ad2052fff71cb1d50c936a902c9fd3d"
   }
 }

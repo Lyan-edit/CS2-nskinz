@@ -295,6 +295,7 @@ struct GloveApplyCarrier
 {
     int definition = 0;
     bool reconstructed = false;
+    int knife_definition = 0;
 };
 
 struct Status
@@ -426,6 +427,18 @@ public:
         return glove_apply_carriers_;
     }
 
+    void ReplaceAppearanceProbeTargets(std::vector<std::uint64_t> targets)
+    {
+        std::scoped_lock lock(mutex_);
+        appearance_probe_targets_ = std::move(targets);
+    }
+
+    std::vector<std::uint64_t> SnapshotAppearanceProbeTargets() const
+    {
+        std::scoped_lock lock(mutex_);
+        return appearance_probe_targets_;
+    }
+
     void ReplaceConfig(model::ConfigDocument document)
     {
         std::scoped_lock lock(mutex_);
@@ -518,6 +531,7 @@ private:
     std::shared_ptr<const model::Catalog> catalog_ = std::make_shared<const model::Catalog>();
     runtime::Status status_;
     std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> glove_apply_carriers_;
+    std::vector<std::uint64_t> appearance_probe_targets_;
     std::vector<model::DemoMirvPlayerEntry> demo_mirv_players_;
     std::atomic<std::uint64_t> config_revision_ {0};
     std::atomic_bool demo_console_player_refresh_requested_ {false};
