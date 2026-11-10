@@ -16,6 +16,7 @@ use std::sync::LazyLock;
 use std::time::Instant;
 
 mod keychains;
+mod container;
 mod killfeed;
 use keychains::{KeychainRule, RequestKeychain};
 
@@ -2640,6 +2641,7 @@ fn rewrite(request: &Request) -> Result<Response> {
     }
     let rewrite_ms = elapsed_ms(rewrite_started);
     let verification_started = Instant::now();
+    container::verify_header_indexes(&request.output_dem)?;
     let verified_death_events = killfeed::verify(&request.output_dem, &killfeed_audit)?;
     let rewritten_discovery = discover(&request.output_dem)?;
     let (verified_glove_records, verified_glove_created, verified_keychain_records, verified_keychain_created) =

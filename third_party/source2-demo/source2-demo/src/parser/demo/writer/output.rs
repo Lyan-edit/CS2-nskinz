@@ -20,6 +20,9 @@ where
         if msg_type == EDemoCommands::DemFileInfo && self.file_info_offset.is_none() {
             self.file_info_offset = Some(self.bytes_written);
         }
+        if msg_type == EDemoCommands::DemSpawnGroups && self.spawn_groups_offset.is_none() {
+            self.spawn_groups_offset = Some(self.bytes_written);
+        }
         self.bytes_written += self
             .writer
             .write_message_with_compression(msg_type, tick, payload, compressed)?
@@ -36,6 +39,9 @@ where
     ) -> Result<(), ParserError> {
         if msg_type == EDemoCommands::DemFileInfo && self.file_info_offset.is_none() {
             self.file_info_offset = Some(self.bytes_written);
+        }
+        if msg_type == EDemoCommands::DemSpawnGroups && self.spawn_groups_offset.is_none() {
+            self.spawn_groups_offset = Some(self.bytes_written);
         }
 
         let cmd = if compressed {
@@ -75,15 +81,20 @@ where
         }
     }
 
-    pub(crate) fn finalize_file_info_offset(&mut self) -> Result<(), ParserError> {
-        let Some(offset) = self.file_info_offset else {
-            return Ok(());
-        };
-        let offset: u32 = offset
+    pub(crate) fn finalize_header_offsets(&mut self) -> Result<(), ParserError> {
+        // PBDEMS2 stores both FileInfo and SpawnGroups file positions. Copying
+        // the source's second index leaves it inside an unrelated packet after
+        // entity rewrites change the stream length. Sequential parsers can
+        // still accept that file while the engine cannot load scene resources.
+        let file_info: u32 = self.file_info_offset.unwrap_or(0)
+            .try_into()
+            .map_err(|_| ParserError::ReplayEncodingError)?;
+        let spawn_groups: u32 = self.spawn_groups_offset.unwrap_or(0)
             .try_into()
             .map_err(|_| ParserError::ReplayEncodingError)?;
         self.writer.seek(SeekFrom::Start(8))?;
-        self.writer.write_all(&offset.to_le_bytes())?;
+        self.writer.write_all(&file_info.to_le_bytes())?;
+        self.writer.write_all(&spawn_groups.to_le_bytes())?;
         self.writer.seek(SeekFrom::End(0))?;
         Ok(())
     }

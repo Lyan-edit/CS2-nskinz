@@ -1,5 +1,5 @@
 {
-  "version": "0.7.2",
+  "version": "0.7.3-beta",
   "method": "Unmodified D3D11 backbuffer PNG from the real MainWindow implementation; UiHarness --documentation",
   "example_configuration": "AK-47, Case Hardened, five identical Titan (Holo) stickers; slot 1 custom placement enabled at zero delta",
   "game_connected": false,
