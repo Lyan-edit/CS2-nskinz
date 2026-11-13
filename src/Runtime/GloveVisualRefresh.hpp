@@ -6,19 +6,30 @@
 
 namespace nskinzcs2::runtime
 {
-// client.dll PE timestamp 0x6ADA7340 (2026-10-23 local install): the native pawn glove
+// client.dll PE timestamp 0x6AF4A59C (CS2 2000943 local install): the native pawn glove
 // component's output is consumed by HUD. This is NOT m_hMyWearables or a
 // fabricated CEconWearable.
-inline constexpr std::uintptr_t kGloveVisualRefreshRva = 0xC66210;
+inline constexpr std::uintptr_t kGloveVisualRefreshRva = 0xC5B100;
 // The continuously reached HUD glove assembly consumer. It
 // resolves the observed Pawn from this+0x520, then consumes Pawn+0x15F8.
-inline constexpr std::uintptr_t kGloveHudConsumerRva = 0x10D5B00;
+inline constexpr std::uintptr_t kGloveHudConsumerRva = 0x10CED00;
 inline constexpr std::ptrdiff_t kGloveHudConsumerPawnHandleOffset = 0x520;
 // The native glove updater resolves its output handle through this client-only
 // identity chunk root, not the networked client entity system.
-inline constexpr std::uintptr_t kGloveVisualEntityChunksRva = 0x2371A70;
+inline constexpr std::uintptr_t kGloveVisualEntityChunksRva = 0x235DB70;
 inline constexpr std::ptrdiff_t kGloveVisualComponentOffset = 0x15F8;
 inline constexpr std::ptrdiff_t kGloveVisualComponentOwnerOffset = 0xB0;
+// Native refresh code uses these fields directly; unlike ordinary Schema
+// reads, both call sites must reject an unverified physical layout together.
+inline constexpr std::ptrdiff_t kGloveVerifiedEconOffset = 0x17A0;
+inline constexpr std::ptrdiff_t kGloveVerifiedDirtyOffset = 0x179D;
+inline constexpr std::ptrdiff_t kGloveVerifiedChangedOffset = 0x1D50;
+inline constexpr bool GloveVisualSchemaMatches(std::ptrdiff_t econ, std::ptrdiff_t dirty,
+    std::ptrdiff_t changed, std::ptrdiff_t initialized) noexcept
+{
+    return econ == kGloveVerifiedEconOffset && dirty == kGloveVerifiedDirtyOffset &&
+        changed == kGloveVerifiedChangedOffset && initialized == 0x1E8;
+}
 struct GloveVisualEvidenceWindow
 {
     std::uintptr_t rva;

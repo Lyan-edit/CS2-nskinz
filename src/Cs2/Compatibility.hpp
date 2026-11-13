@@ -11,11 +11,11 @@
 
 namespace nskinzcs2::compatibility
 {
-inline constexpr std::string_view kVerifiedClientVersion = "2000942";
-inline constexpr std::string_view kVerifiedPatchVersion = "1.41.9.6";
-inline constexpr std::string_view kVerifiedSourceRevision = "11206718";
-inline constexpr std::string_view kVerifiedHlaeVersion = "2.192.8.0";
-// C_EconWearable Schema size retained by the installed build 2000942 class
+inline constexpr std::string_view kVerifiedClientVersion = "2000943";
+inline constexpr std::string_view kVerifiedPatchVersion = "1.41.9.7";
+inline constexpr std::string_view kVerifiedSourceRevision = "11228971";
+inline constexpr std::string_view kVerifiedHlaeVersion = "2.193.0.0";
+// C_EconWearable Schema size retained by the installed build 2000943 class
 // metadata and cross-checked against both allocator immediates.
 inline constexpr std::uint32_t kWearableSchemaClassSize = 0x1920;
 
@@ -23,12 +23,12 @@ inline constexpr char kSource2ClientInterface[] = "Source2Client002";
 inline constexpr char kResourceSystemInterface[] = "ResourceSystem013";
 inline constexpr char kFileSystemInterface[] = "VFileSystem017";
 inline constexpr std::size_t kFrameStageNotifyVtableIndex = 36;
-// ClientFrameStage_t layout re-verified with HLAE 2.192.8. Runtime polling must run at
+// ClientFrameStage_t layout re-verified with HLAE 2.193.0. Runtime polling must run at
 // FRAME_RENDER_PASS; using the previous value (11) leaves every manual Update
 // pending forever even though FrameStageNotify callbacks are active.
 inline constexpr int kFrameStartStage = 0;
 inline constexpr int kFrameRenderPassStage = 12;
-// Source2EngineToClient001 layout verified on HLAE 2.192.8 / CS2 build 2000935.
+// Source2EngineToClient001 layout verified on HLAE 2.193.0 / CS2 build 2000943.
 inline constexpr std::size_t kEngineIsPlayingDemoVtableIndex = 42;
 inline constexpr std::size_t kEngineGetDemoFilePathVtableIndex = 43;
 inline constexpr std::size_t kEngineGetLevelNameShortVtableIndex = 65;

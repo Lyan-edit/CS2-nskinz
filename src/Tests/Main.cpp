@@ -6614,7 +6614,11 @@ void TestStandardWeaponStockInitialization()
     corrupt_compact_generator[28] ^= 1;
     Expect(!IsVerifiedWeaponMaterialGeneratorEntry(corrupt_compact_generator),
         "changed compact-frame generator ABI must fail closed");
-    if (const auto* client = _wgetenv(L"NSKINZCS2_KNIFE_CLIENT_DLL"); client != nullptr)
+    // Active appearance checks do not require the retired live knife-model /
+    // animgraph binary pair. Keep the legacy fixture contract unchanged.
+    const auto* appearance_client = _wgetenv(L"NSKINZCS2_APPEARANCE_CLIENT_DLL");
+    if (appearance_client == nullptr) appearance_client = _wgetenv(L"NSKINZCS2_KNIFE_CLIENT_DLL");
+    if (const auto* client = appearance_client; client != nullptr)
     {
         Expect(ProbeStandardWeaponMaterialCallsForTests(client), "actual installed client must resolve both native material callees");
         std::cout << "standard_weapon_material_native_evidence=PASS\n";

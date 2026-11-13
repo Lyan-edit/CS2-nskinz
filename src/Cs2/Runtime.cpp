@@ -80470,9 +80470,8 @@ bool TryResolvePawnGloveVisualRefreshContext(
     const auto& offsets = g_hook_state.schema_offsets;
     auto* entity_list = g_hook_state.runtime_entities.last_entity_list;
     if (!IsHlaeOfflineRenderPassAuthorized() || !entity_list || !player.pawn_entity ||
-        player.xuid != request.xuid || offsets.pawn_econ_gloves != 0x1770 ||
-        offsets.pawn_need_reapply_gloves != 0x176D ||
-        offsets.pawn_econ_gloves_changed != 0x1D20 || offsets.item_view_initialized != 0x1E8)
+        player.xuid != request.xuid || !GloveVisualSchemaMatches(offsets.pawn_econ_gloves,
+            offsets.pawn_need_reapply_gloves, offsets.pawn_econ_gloves_changed, offsets.item_view_initialized))
         return false;
 
     StandardWeaponEntityEpoch pawn;
@@ -81132,9 +81131,8 @@ bool PollPawnGloveVisualRefresh(const RuntimePlayerBinding& player, void* entity
     using namespace nskinzcs2::runtime;
     const auto& offsets = g_hook_state.schema_offsets;
     if (!IsHlaeOfflineRenderPassAuthorized() || !entity_list || !player.pawn_entity ||
-        player.xuid != request.xuid || offsets.pawn_econ_gloves != 0x1770 ||
-        offsets.pawn_need_reapply_gloves != 0x176D ||
-        offsets.pawn_econ_gloves_changed != 0x1D20 || offsets.item_view_initialized != 0x1E8)
+        player.xuid != request.xuid || !GloveVisualSchemaMatches(offsets.pawn_econ_gloves,
+            offsets.pawn_need_reapply_gloves, offsets.pawn_econ_gloves_changed, offsets.item_view_initialized))
         return false;
     GloveVisualRefreshKey key;
     void* resolved_pawn = nullptr;
@@ -82197,7 +82195,7 @@ bool TrySynchronizeLiveKnifeHudMaterials(const RenderedWorldWeaponTrace& trace,
     const auto client = reinterpret_cast<std::uintptr_t>(module->base);
     auto& reader = GetIndependentKnifeSession().host;
     if (!VerifyKnifeFinishEvidence(client, module->size, reader))
-        return pending(L"native knife material-copy ABI mismatch (verified client 2000942); finish and HUD name synchronization are blocked.");
+        return pending(L"native knife material-copy ABI mismatch (verified client 2000943); finish and HUD name synchronization are blocked.");
     const auto& binding = g_hook_state.weapon_skin_refresh;
     if (!g_hook_state.weapon_skin_refresh_ready.load() || binding.offset_patched ||
         binding.standard_material_owner_offset != 0x610 || binding.original_offset != 0xAB0 ||
@@ -83809,7 +83807,7 @@ bool TryRefreshKnifeHudName(void* entity, void* item, const int entity_index,
     if (!module) return fail(L"client module unavailable");
     const auto client = reinterpret_cast<std::uintptr_t>(module->base);
     if (!VerifyKnifeHudNameEvidence(client, module->size, GetIndependentKnifeSession().host))
-        return fail(L"native item-name cache/getter ABI is not verified (expected client 2000942)");
+        return fail(L"native item-name cache/getter ABI is not verified (expected client 2000943)");
     if (!pawn || !EnsureKnifeHudLabelHook()) return fail(L"native right HUD label bridge is not verified");
     const auto alive = [&]()
     {

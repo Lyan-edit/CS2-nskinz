@@ -1262,15 +1262,36 @@ void InstalledFinishBinaryEvidence(const wchar_t* client)
         Check(static_cast<std::int64_t>(caller) + 5 + displacement == static_cast<std::int64_t>(target), message);
     };
     // Read both ends from the real PE. A blanket RVA shift is incorrect: the
-    // material helpers and the current-model callee moved differently in 2000942.
-    check_call(kKnifeMaterialApplyRva + 0x22, 0x21C910, "material apply still reads the current model");
-    check_call(0x804330, kKnifeClearMaterialsRva, "generator failure clears the verified material owner");
-    check_call(0x10D9159, kKnifeCopyMaterialsRva, "native HUD construction uses the verified material-copy entry");
-    check_call(0x1193772, kKnifeInvalidateItemNameRva, "native Econ attribute setter invalidates this name cache");
-    check_call(0xEAB4D8, kKnifeGetItemNameRva, "right HUD name consumer uses this item-name getter");
-    check_call(0xE09FD6, kKnifeGetItemNameRva, "full display-name consumer requests the same getter with true");
-    check_call(0xEAB4FC, kKnifeHudSetDialogStringRva, "right HUD icon writes this exact string dialog variable");
-    check_call(0xEB344A, kKnifeHudSelectionUpdateRva, "HUD think updates this view with the selected pawn");
+    // material helpers and the current-model callee moved differently in 2000943.
+    check_call(kKnifeMaterialApplyRva + 0x22, 0x21C6F0, "material apply still reads the current model");
+    check_call(0x7FDA50, kKnifeClearMaterialsRva, "generator failure clears the verified material owner");
+    check_call(0x10CFC79, kKnifeCopyMaterialsRva, "native HUD construction uses the verified material-copy entry");
+    check_call(0x118A292, kKnifeInvalidateItemNameRva, "native Econ attribute setter invalidates this name cache");
+    check_call(0xEA19E8, kKnifeGetItemNameRva, "right HUD name consumer uses this item-name getter");
+    check_call(0xDFFF56, kKnifeGetItemNameRva, "full display-name consumer requests the same getter with true");
+    check_call(0xEA1A0C, kKnifeHudSetDialogStringRva, "right HUD icon writes this exact string dialog variable");
+    check_call(0xEA995A, kKnifeHudSelectionUpdateRva, "HUD think updates this view with the selected pawn");
+    check_call(0xC5E30B, kGloveVisualRefreshRva, "pawn glove caller uses the verified component refresh entry");
+    for (const auto& window : GloveVisualEvidenceWindows())
+    {
+        const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
+        Check(std::equal(bytes.begin(), bytes.end(), window.bytes.begin()), "installed glove native/HUD instruction evidence");
+    }
+    const auto glove_root = ReadPeRva(client, 0xC5B170, 4);
+    std::int32_t glove_displacement = 0;
+    std::memcpy(&glove_displacement, glove_root.data(), sizeof(glove_displacement));
+    Check(0xC5B174 + glove_displacement == kGloveVisualEntityChunksRva, "installed client-only glove identity root");
+    const auto econ_instruction = ReadPeRva(client, 0xC5B2BD, 4);
+    std::int32_t econ_offset = 0;
+    std::memcpy(&econ_offset, econ_instruction.data(), sizeof(econ_offset));
+    const auto dirty_instruction = ReadPeRva(client, 0xC5B1D6, 4);
+    std::int32_t dirty_offset = 0;
+    std::memcpy(&dirty_offset, dirty_instruction.data(), sizeof(dirty_offset));
+    Check(GloveVisualSchemaMatches(econ_offset, dirty_offset, 0x1D50, 0x1E8),
+        "native glove field displacements match the shared Schema guard");
+    Check(!GloveVisualSchemaMatches(0x1770, 0x176D, 0x1D20, 0x1E8),
+        "the previous pawn glove layout cannot enter the updated native path");
+    std::cout << "glove_native_installed_evidence=PASSED\n";
     for (const auto& window : KnifeFinishEvidenceWindows())
     {
         const auto bytes = ReadPeRva(client, window.rva, window.bytes.size());
