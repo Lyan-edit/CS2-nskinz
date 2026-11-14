@@ -24,6 +24,7 @@ pub(crate) enum FieldDecoder {
     Signed16,
     Signed32,
     Unsigned8,
+    Fixed8,
     Unsigned16,
     Unsigned32,
 
@@ -34,6 +35,56 @@ pub(crate) enum FieldDecoder {
     QAngle(QAngleDecoder),
 
     CCSGameModeRules,
+}
+
+#[cfg(test)]
+mod fixed8_tests {
+    use super::*;
+    use crate::entity::field::{Field, FieldModel, FieldPath, Serializer};
+    use std::rc::Rc;
+
+    #[test]
+    fn fixed8_vector_elements_decode_skip_and_encode_without_bit_drift() {
+        let field_type = Rc::new(FieldType::new("CNetworkUtlVectorBase< uint8 >"));
+        let properties = FieldProperties { encoder: FieldEncoder::from_str("fixed8"),
+            encoder_flags: 0, bit_count: 0, low_value: 0.0, high_value: 0.0 };
+        let decoder = FieldDecoder::from_field(field_type.generic.as_ref().unwrap(), properties);
+        let mut serializer = Serializer::default();
+        serializer.fields.push(Rc::new(Field {
+            var_name: "m_SerializePoseRecipeAG2Dynamic".into(), send_node: None,
+            field_type, model: FieldModel::ValueVector(decoder), decoder: FieldDecoder::Unsigned32,
+        }));
+        let mut fp = FieldPath::default(); fp.path[0] = 0; fp.push(0);
+        let decoder = serializer.get_decoder(&fp);
+        let mut bytes = Vec::new();
+        {
+            let mut writer = BitstreamWriter::new(&mut bytes);
+            writer.write_bits(3, 5).unwrap();
+            for value in 0..=255 { writer.write_bits(8, value).unwrap(); }
+            writer.write_bits(11, 0x5a3).unwrap(); writer.flush().unwrap();
+        }
+        let mut reader = SliceReader::new(&bytes); reader.read_bits(3);
+        for value in 0..=255 {
+            assert_eq!(decoder.decode(&mut reader), FieldValue::Unsigned8(value as u8), "byte {value}");
+        }
+        assert_eq!(reader.read_bits(11), 0x5a3, "next field must start at the original bit position");
+        let mut reader = SliceReader::new(&bytes); reader.read_bits(3);
+        for _ in 0..=255 { decoder.skip(&mut reader); }
+        assert_eq!(reader.read_bits(11), 0x5a3, "untracked entities must skip the same bit lengths");
+        let mut encoded = Vec::new();
+        {
+            let mut writer = BitstreamWriter::new(&mut encoded);
+            writer.write_bits(3, 5).unwrap();
+            for value in 0..=255 { decoder.encode(&mut writer, &FieldValue::Unsigned8(value as u8)).unwrap(); }
+            writer.write_bits(11, 0x5a3).unwrap(); writer.flush().unwrap();
+        }
+        assert_eq!(encoded, bytes, "rewritten values must retain fixed8 wire encoding");
+        // Ordinary uint8 fields retain their varint encoding.
+        let ordinary = FieldDecoder::from_field(&FieldType::new("uint8"), FieldProperties {encoder: None, ..properties});
+        let mut encoded = Vec::new();
+        { let mut writer = BitstreamWriter::new(&mut encoded); ordinary.encode(&mut writer, &FieldValue::Unsigned8(128)).unwrap(); writer.flush().unwrap(); }
+        assert_eq!(encoded, [0x80, 0x01]);
+    }
 }
 
 impl FieldDecoder {
@@ -75,6 +126,7 @@ impl FieldDecoder {
             #[cfg(feature = "dota")]
             "HeroID_t" => FieldDecoder::Signed32,
 
+            "uint8" if properties.encoder == Some(FieldEncoder::Fixed8) => FieldDecoder::Fixed8,
             "uint8" | "BloodType" => FieldDecoder::Unsigned8,
             "uint16" => FieldDecoder::Unsigned16,
             "uint64" | "CStrongHandle" | "HeroFacetKey_t" | "ResourceId_t" => {
@@ -106,6 +158,7 @@ impl Decode for FieldDecoder {
             FieldDecoder::Signed32 => FieldValue::Signed32(reader.read_var_i32()),
 
             FieldDecoder::Unsigned8 => FieldValue::Unsigned8(reader.read_var_u32() as u8),
+            FieldDecoder::Fixed8 => FieldValue::Unsigned8(reader.read_bits(8) as u8),
             FieldDecoder::Unsigned16 => FieldValue::Unsigned16(reader.read_var_u32() as u16),
             FieldDecoder::Unsigned32 => FieldValue::Unsigned32(reader.read_var_u32()),
 
@@ -133,6 +186,7 @@ impl Skip for FieldDecoder {
                 reader.refill();
                 reader.skip_bits(1);
             }
+            FieldDecoder::Fixed8 => reader.skip_bits(8),
             FieldDecoder::String => reader.skip_cstring(),
             FieldDecoder::BinaryBlock => {
                 let n = reader.read_var_u32();
@@ -176,6 +230,7 @@ impl Encode for FieldDecoder {
             FieldDecoder::Signed16 => writer.write_var_i32(value.i16() as i32),
             FieldDecoder::Signed32 => writer.write_var_i32(value.i32()),
             FieldDecoder::Unsigned8 => writer.write_var_u32(value.u8() as u32),
+            FieldDecoder::Fixed8 => writer.write_bits(8, value.u8() as u64),
             FieldDecoder::Unsigned16 => writer.write_var_u32(value.u16() as u32),
             FieldDecoder::Unsigned32 => writer.write_var_u32(value.u32()),
             FieldDecoder::Unsigned64(decoder) => decoder.encode(writer, value),

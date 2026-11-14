@@ -14,7 +14,7 @@ import shutil
 import struct
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ("src/UI/MainWindow.cpp", "src/UI/MainWindow.hpp", "src/UI/UiText.hpp",
+SOURCES = ("src/UI/MainWindow.cpp", "src/UI/MainWindow.hpp", "src/UI/UiText.hpp", "src/UI/KnifeFinishLabels.hpp",
            "src/UI/WeaponPreviewGeometry.generated.hpp", "src/UI/StickerPreviewPlacement.generated.hpp",
            "src/UI/StickerPreviewPlacement.generated.cpp", "src/UI/StickerPreviewMetrics.hpp",
            "tools/UiPanelHarness.cpp", "nSkinzCS2.UiHarness.vcxproj")

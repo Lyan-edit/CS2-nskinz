@@ -9,6 +9,7 @@
 #include "UI/ExternalUiHost.hpp"
 #include "UI/StickerPreviewMetrics.hpp"
 #include "UI/KeychainPreview.hpp"
+#include "UI/KnifeFinishLabels.hpp"
 #include "Core/SmartApply.hpp"
 #include "UI/StickerPreviewPlacement.generated.hpp"
 #include "UI/UiText.hpp"
@@ -1702,7 +1703,13 @@ private:
     const std::vector<NamedId>& CachedScopedKnifePaints(const Catalog& catalog, const int definition)
     {
         const auto [it, inserted] = cached_scoped_knife_paints_.try_emplace(definition);
-        if (inserted) it->second = nskinzcs2::BuildScopedFinishOptions(catalog, nskinzcs2::ApplyScope::Knife, definition);
+        if (inserted)
+        {
+            it->second = nskinzcs2::BuildScopedFinishOptions(catalog, nskinzcs2::ApplyScope::Knife, definition);
+            for (auto& paint : it->second)
+                paint.name = nskinzcs2::ui::KnifeFinishDisplayName(
+                    paint.id, paint.name, nskinzcs2::build::kUiLanguageChinese);
+        }
         return it->second;
     }
 
@@ -2310,7 +2317,9 @@ private:
                 catalog.weapon_paint_kits.end(),
                 [&](const NamedId& paint) { return paint.id == profile.paint_kit; });
             blocked_knife_preview = std::string(Ui(UiTextId::WeaponPaintBlocked)) + " " +
-                (found != catalog.weapon_paint_kits.end() ? found->name : std::string {}) +
+                nskinzcs2::ui::KnifeFinishDisplayName(profile.paint_kit,
+                    found != catalog.weapon_paint_kits.end() ? found->name : std::string {},
+                    nskinzcs2::build::kUiLanguageChinese) +
                 " (" + std::to_string(profile.paint_kit) + ")";
         }
         ImGui::BeginDisabled(current_model <= 0);

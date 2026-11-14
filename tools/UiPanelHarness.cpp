@@ -122,6 +122,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (arguments.find(L"--knife-finish") != std::wstring_view::npos) finish_capture = 1;
     if (arguments.find(L"--glove-finish") != std::wstring_view::npos) finish_capture = 2;
     if (arguments.find(L"--unknown-model") != std::wstring_view::npos) finish_capture = 3;
+    const bool gamma_finish = arguments.find(L"--gamma-finish") != std::wstring_view::npos;
+    if (gamma_finish) finish_capture = 1;
     if (arguments.find(L"--fail-construction-once") != std::wstring_view::npos) fault_phase = "construction";
     if (arguments.find(L"--fail-resources-once") != std::wstring_view::npos) fault_phase = "resources";
     if (arguments.find(L"--fail-device-once") != std::wstring_view::npos) fault_phase = "resources-return";
@@ -130,7 +132,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (length == 0 || length >= image.size()) return 1;
     image.resize(length);
     const auto directory = std::filesystem::path(image).parent_path();
-    capture_path = directory / (finish_capture == 1 ? L"knife-finish.png" :
+    capture_path = directory / (gamma_finish ? L"gamma-finish.png" : finish_capture == 1 ? L"knife-finish.png" :
         finish_capture == 2 ? L"glove-finish.png" : finish_capture == 3 ? L"unknown-model.png" :
         missing_xuid_capture ? L"missing-xuid-notice.png" :
         keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
@@ -157,7 +159,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     {
         // Explicit harness fixture, never used by the injected runtime.
         auto& knife = config.knife_profiles[0];
-        knife.enabled = true; knife.xuid = 123; knife.paint_kit = 415;
+        knife.enabled = true; knife.xuid = 123; knife.paint_kit = gamma_finish ? 568 : 415;
         auto& glove = config.glove_profiles[0];
         glove.enabled = true; glove.xuid = 123; glove.paint_kit = 10018;
         if (finish_capture != 3) state.ReplaceGloveApplyCarriers({{123, {5030, false, 515}}});

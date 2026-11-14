@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -37,6 +38,22 @@ std::wstring Timestamp(const std::chrono::system_clock::time_point now = std::ch
     stream << std::put_time(&local_tm, L"%Y-%m-%d %H:%M:%S");
     return stream.str();
 }
+
+// The default wide-file codec rejects non-ASCII build paths in Rust panics.
+// Encode explicitly so one Unicode character cannot discard the rest of a record.
+void WriteRecord(std::ofstream& stream, const std::chrono::system_clock::time_point timestamp,
+    const std::wstring_view level, const std::wstring_view message)
+{
+    const auto record = L"[" + Timestamp(timestamp) + L"] [" + std::wstring(level) + L"] " +
+        std::wstring(message) + L"\n";
+    const auto size = WideCharToMultiByte(CP_UTF8, 0, record.data(), static_cast<int>(record.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return;
+    std::string encoded(static_cast<std::size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, record.data(), static_cast<int>(record.size()),
+        encoded.data(), size, nullptr, nullptr);
+    stream.write(encoded.data(), static_cast<std::streamsize>(encoded.size()));
+}
 }
 
 nskinzcs2::Logger::DeferredScope::DeferredScope() noexcept { ++g_deferred_depth; }
@@ -58,12 +75,13 @@ void nskinzcs2::Logger::FlushDeferred()
     if (lines.empty() && dropped == 0) return;
     std::scoped_lock lock(g_log_mutex);
     if (g_log_path.empty()) return;
-    std::wofstream stream(g_log_path, std::ios::app);
+    std::ofstream stream(g_log_path, std::ios::binary | std::ios::app);
     for (const auto& line : lines)
-        stream << L"[" << Timestamp(line.timestamp) << L"] [" << line.level << L"] " << line.message << L"\n";
+        WriteRecord(stream, line.timestamp, line.level, line.message);
     if (dropped != 0)
-        stream << L"[" << Timestamp() << L"] [WARN] Deferred runtime diagnostics dropped=" << dropped
-            << L" (bounded queue busy/full; gameplay was not blocked).\n";
+        WriteRecord(stream, std::chrono::system_clock::now(), L"WARN",
+            L"Deferred runtime diagnostics dropped=" + std::to_wstring(dropped) +
+            L" (bounded queue busy/full; gameplay was not blocked).");
     stream.flush();
 }
 
@@ -82,8 +100,8 @@ void nskinzcs2::Logger::Initialize(
         g_deferred_dropped.store(0);
     }
 
-    std::wofstream stream(g_log_path, std::ios::trunc);
-    stream << L"[" << Timestamp() << L"] [INFO] Logger initialized\n";
+    std::ofstream stream(g_log_path, std::ios::binary | std::ios::trunc);
+    WriteRecord(stream, std::chrono::system_clock::now(), L"INFO", L"Logger initialized");
 }
 
 void nskinzcs2::Logger::Info(const std::wstring& message)
@@ -160,8 +178,8 @@ void nskinzcs2::Logger::WriteLine(const wchar_t* level, const std::wstring& mess
         return;
     }
 
-    std::wofstream stream(g_log_path, std::ios::app);
-    stream << L"[" << Timestamp() << L"] [" << level << L"] " << message << L"\n";
+    std::ofstream stream(g_log_path, std::ios::binary | std::ios::app);
+    WriteRecord(stream, std::chrono::system_clock::now(), level, message);
     stream.flush();
 }
 

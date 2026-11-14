@@ -522,6 +522,8 @@ bool RunNskinDemoRewriter(
         if (detail.empty()) detail = Utf8ToWide(log_tail);
         issue = L"nSkinz demo rewriter failed (exit " + std::to_wstring(exit_code) + L")";
         if (!detail.empty()) issue += L": " + detail.substr(0, 1000);
+        issue += L"\nFull diagnostics: " + log_path.wstring() +
+            L"\nResponse: " + response_path.wstring();
         return false;
     }
     return true;
@@ -1256,6 +1258,7 @@ DemoSkinRewriteResult nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
         L", weapon_items=" + std::to_wstring(plan.weapon_item_count) +
         L", knife_items=" + std::to_wstring(plan.knife_item_count) +
         L", glove_items=" + std::to_wstring(plan.glove_item_count) + L".");
+    Logger::Info(L"Temporary demo rewrite diagnostics: " + job_directory.wstring());
 
     std::wstring issue;
     if (!RunNskinDemoRewriter(request_path, response_path, log_path, issue))

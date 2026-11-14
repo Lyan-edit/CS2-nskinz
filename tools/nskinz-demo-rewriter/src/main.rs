@@ -2726,17 +2726,19 @@ fn write_response(path: &Path, response: &Response) -> Result<()> {
     Ok(())
 }
 
-fn run_main() -> Result<()> {
-    let (request_path, response_path) = arguments()?;
-    let result = (|| -> Result<Response> {
-        let request: Request = serde_json::from_slice(
-            &std::fs::read(&request_path)
-                .with_context(|| format!("read request {}", request_path.display()))?,
-        )?;
-        rewrite(&request)
-    })();
+// A parser panic used to bypass response.json entirely. The default panic
+// hook still records its source location in rewriter.log; preserve the payload
+// in the same failure protocol as ordinary errors, never as a successful Demo.
+fn run_response_job(response_path: &Path, job: impl FnOnce() -> Result<Response>) -> Result<()> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job))
+        .unwrap_or_else(|payload| {
+            let message = payload.downcast_ref::<String>().map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("non-string panic payload");
+            Err(anyhow!("demo rewrite worker panicked: {message}; full source location is in rewriter.log"))
+        });
     match result {
-        Ok(response) => write_response(&response_path, &response),
+        Ok(response) => write_response(response_path, &response),
         Err(error) => {
             let response = Response {
                 ok: false,
@@ -2774,10 +2776,21 @@ fn run_main() -> Result<()> {
                 verification_ms: 0,
                 total_ms: 0,
             };
-            let _ = write_response(&response_path, &response);
+            write_response(response_path, &response).context("write rewrite failure response")?;
             Err(error)
         }
     }
+}
+
+fn run_main() -> Result<()> {
+    let (request_path, response_path) = arguments()?;
+    run_response_job(&response_path, || {
+        let request: Request = serde_json::from_slice(
+            &std::fs::read(&request_path)
+                .with_context(|| format!("read request {}", request_path.display()))?,
+        )?;
+        rewrite(&request)
+    })
 }
 
 fn main() -> Result<()> {
@@ -2794,6 +2807,35 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn worker_panic_is_a_structured_failure_not_a_missing_response() {
+        let directory = temporary_directory("panic-response");
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("response.json");
+        let error = run_response_job(&path, || panic!("fixture parser panic \u{9879}\u{76ee}"))
+            .expect_err("panic must remain a failed rewrite");
+        assert!(error.to_string().contains("fixture parser panic"));
+        let response: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(response["ok"], false);
+        assert!(response["error"].as_str().unwrap().contains("fixture parser panic \u{9879}\u{76ee}"));
+        assert_eq!(response["pawn_count"], 0);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the external fixed8 Demo and a rewrite request"]
+    fn real_fixed8_demo_rebuilds_and_verifies_glove_snapshots() {
+        let path = std::env::var_os("NSKINZCS2_FIXED8_REWRITE_REQUEST")
+            .expect("set NSKINZCS2_FIXED8_REWRITE_REQUEST to a fixture request JSON");
+        let request: Request = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let response = rewrite(&request).expect("rebuild the fixed8 regression recording");
+        assert!(response.ok && response.glove_count > 0);
+        assert!(response.verified_glove_record_count > 0);
+        assert!(response.verified_glove_created_count > 0, "independent seek snapshots must also verify");
+        eprintln!("fixed8_demo_gloves={} verified_records={} verified_seek_creates={}",
+            response.glove_count, response.verified_glove_record_count, response.verified_glove_created_count);
+    }
 
     fn temporary_directory(name: &str) -> PathBuf {
         let unique = SystemTime::now()

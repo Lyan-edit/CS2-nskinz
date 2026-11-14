@@ -51,6 +51,7 @@ bool g_workshop_discovery_only = false;
 bool g_export_workshop_radars = false;
 bool g_radar_only = false;
 bool g_glove_refresh_only = false;
+bool g_logging_only = false;
 
 void WriteRadarPreviewIfRequested(
     const std::string_view name,
@@ -6476,6 +6477,34 @@ void TestImmutableCatalogSnapshot()
         "an active apply pass must retain its old catalog safely across replacement");
 }
 
+void TestUnicodeRewriteFailureLogging()
+{
+    const auto directory = std::filesystem::temp_directory_path();
+    const auto filename = L"nSkinzCS2.unicode." + std::to_wstring(GetCurrentProcessId()) + L".log";
+    const auto path = directory / filename;
+    nskinzcs2::Logger::Initialize(directory.wstring(), filename);
+    const auto failure = L"thread 'nskinz-demo-rewrite' panicked at E:\\codex\u9879\u76ee\\parser.rs:42:\nfixture-parser-panic-after-unicode";
+    nskinzcs2::Logger::Error(failure);
+    {
+        nskinzcs2::Logger::DeferredScope deferred;
+        nskinzcs2::Logger::Warn(failure);
+    }
+    nskinzcs2::Logger::FlushDeferred();
+    nskinzcs2::Logger::Info(L"next-record-after-panic");
+    std::ifstream stream(path, std::ios::binary);
+    const std::string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const std::string marker = "fixture-parser-panic-after-unicode\n";
+    const auto first = content.find(marker);
+    Expect(first != std::string::npos && content.find(marker, first + marker.size()) != std::string::npos,
+        "immediate and deferred rewrite errors must retain panic text after a Unicode build path");
+    Expect(content.find("E:\\codex\xE9\xA1\xB9\xE7\x9B\xAE\\parser.rs:42:") != std::string::npos &&
+        content.find("next-record-after-panic\n") != std::string::npos,
+        "logs must be UTF-8 and preserve the next record boundary");
+    stream.close();
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
+
 void TestDeferredRuntimeLogging()
 {
     const auto directory = std::filesystem::temp_directory_path();
@@ -7132,6 +7161,13 @@ int RunAllTests()
 {
     try
     {
+        if (g_logging_only)
+        {
+            RunNamedTest("TestUnicodeRewriteFailureLogging", TestUnicodeRewriteFailureLogging);
+            RunNamedTest("TestDeferredRuntimeLogging", TestDeferredRuntimeLogging);
+            std::cout << "logging regression passed (no CS2 process)\n";
+            return EXIT_SUCCESS;
+        }
         if (g_glove_refresh_only)
         {
             RunNamedTest("TestGloveNativeVisualRefresh", TestGloveNativeVisualRefresh);
@@ -7259,6 +7295,7 @@ int RunAllTests()
         RunNamedTest("TestWeaponAppearanceModule", TestWeaponAppearanceModule);
         RunNamedTest("TestM4A4ModernLegacyTransition", TestM4A4ModernLegacyTransition);
         RunNamedTest("TestDeferredRuntimeLogging", TestDeferredRuntimeLogging);
+        RunNamedTest("TestUnicodeRewriteFailureLogging", TestUnicodeRewriteFailureLogging);
         std::cout << "nSkinzCS2 tests passed\n";
         return EXIT_SUCCESS;
     }
@@ -7315,6 +7352,10 @@ void ParseArguments(const int argc, wchar_t** argv)
         else if (argument == L"--glove-refresh-only")
         {
             g_glove_refresh_only = true;
+        }
+        else if (argument == L"--logging-only")
+        {
+            g_logging_only = true;
         }
     }
 }

@@ -208,7 +208,7 @@ impl Display for FieldDecoder {
             FieldDecoder::Signed8 => "i32",
             FieldDecoder::Signed16 => "i16",
             FieldDecoder::Signed32 => "i32",
-            FieldDecoder::Unsigned8 => "u8",
+            FieldDecoder::Unsigned8 | FieldDecoder::Fixed8 => "u8",
             FieldDecoder::Unsigned16 => "u16",
             FieldDecoder::Unsigned32 => "u32",
             FieldDecoder::Vector(decoder) => &format!("[f32; {}]", decoder.dimensions()),

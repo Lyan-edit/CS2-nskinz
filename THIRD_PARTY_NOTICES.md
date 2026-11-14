@@ -68,5 +68,6 @@ upstream terms are preserved in:
 - [`third_party/source2-demo/LICENSE-MIT`](third_party/source2-demo/LICENSE-MIT)
 - [`third_party/source2-demo/LICENSE-APACHE`](third_party/source2-demo/LICENSE-APACHE)
 
-The vendored source, including nSkinz's field-materialization and string-table
-insertion changes, is distributed in [`third_party/source2-demo`](third_party/source2-demo).
+The vendored source, including nSkinz's field-materialization, string-table
+insertion and fixed8 entity-codec changes, is distributed in
+[`third_party/source2-demo`](third_party/source2-demo).
