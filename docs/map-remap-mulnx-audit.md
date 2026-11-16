@@ -4,6 +4,18 @@ Reference / 参考：[`Co1Swet/MulNX_CS2`](https://github.com/Co1Swet/MulNX_CS2)
 
 The 2026-09-27 delta masks the relative branch displacements in the `CSVCMsg_GameSessionConfiguration` shared-string parser signature and moves field 11 (`s1_mapname`, has-bit 2) from the old `+0x28` slot to the current `+0x40` slot. The upstream pattern uniquely matches RVA `0x17D153` in the verified CS2 2000918 `engine2.dll`.
 
+## 2026-11-16 manifest compatibility repair
+
+Installed CS2 2000943 `engine2.dll` no longer matches the old manifest tail
+`74 32 4C 8B B5`. The current tail is `74 2B 41 8B 16`, uniquely identifying
+RVA `0x3F574E`. The imported call remains `CUtlSymbolTable::AddString` and its
+path argument remains R8. The compatibility delta is cross-checked with the
+[upstream signature definition](https://github.com/Co1Swet/MulNX_CS2/blob/main/source/MulNXExtensions/CS2/Intro/Signatures.hpp)
+and the installed instructions. See [the failure/regression record](diagnostics/map-remap-manifest-20261116.md).
+
+Runtime installation and offline regression now share one resolver for all
+11 engine/client/resource-system hook sites, preserving the unique-match gate.
+
 ## Runtime parity / 运行时对齐
 
 | Component | MulNX behavior | nSkinzCS2 behavior after audit | Result |
@@ -13,7 +25,7 @@ The 2026-09-27 delta masks the relative branch displacements in the `CSVCMsg_Gam
 | SpawnGroup | RSI message, successful RAX, has-bit `0x1`, slot `+0x18` | Same | Aligned |
 | ClearAllStringTables | RSI message, slot `+0x18` | Same | Aligned |
 | ServerInfo | RSI message, slot `+0x20` | Same | Aligned |
-| GameSessionConfiguration | RSI message, has-bit `0x4`, slot `+0x28` | Same | Aligned |
+| GameSessionConfiguration | RSI message, has-bit `0x4`, current slot `+0x40` | Same after the 2026-09-27 compatibility delta | Aligned |
 | Root map KeyValues | RBP is `KeyValues`; set `map` and `levelname` to target without waiting for a header-match flag | Same signature/export and trigger behavior; the earlier ordering gate was removed | Aligned |
 | Failed model tracking | At the resourcesystem log point, RAX is a path; record `.vmdl_c` after removing `_c` | Same | Aligned |
 | Manifest fallback | At the engine2 manifest point, R8 is the path; replace a recorded missing model with `models/tools/bullet_hit_marker.vmdl` | Same and always active after hook installation | Aligned |

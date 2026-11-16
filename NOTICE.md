@@ -8,6 +8,8 @@ The HLAE demo map-remap implementation was adapted from and audited against [`Co
 
 The adapted behavior covers the Demo protobuf map/addon fields, spawn-group and string-table messages, server/session fields, root map KeyValues, failed-model tracking, manifest fallback, missing-vmdl lookup, and the `CUtlString` ABI used by those hooks.
 
+The 2026-11-16 manifest signature compatibility repair was verified against installed CS2 2000943 instructions and cross-checked with the upstream `Pos_Manifest_AddFullPath` definition in [`Signatures.hpp`](https://github.com/Co1Swet/MulNX_CS2/blob/main/source/MulNXExtensions/CS2/Intro/Signatures.hpp). The path remains the R8 argument of `CUtlSymbolTable::AddString`.
+
 Prominent modified/adapted areas in nSkinzCS2 are:
 
 - `src/Runtime/MapRemap.cpp` and `src/Runtime/MapRemap.hpp`

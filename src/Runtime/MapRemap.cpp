@@ -1470,6 +1470,61 @@ void RollbackHooks()
     g_hooks_installed.store(false, std::memory_order_release);
 }
 
+struct MapRemapHookSites
+{
+    std::vector<std::uint8_t*> header;
+    std::vector<std::uint8_t*> spawn;
+    std::vector<std::uint8_t*> clear;
+    std::vector<std::uint8_t*> server;
+    std::vector<std::uint8_t*> session;
+    std::vector<std::uint8_t*> assign;
+    std::vector<std::uint8_t*> map_key_values;
+    std::vector<std::uint8_t*> failed_resource;
+    std::vector<std::uint8_t*> manifest_path;
+    std::vector<std::uint8_t*> request_resource;
+    std::vector<std::uint8_t*> find_resource;
+};
+
+MapRemapHookSites ResolveMapRemapHookSites(
+    const TextRegion& engine_text, const TextRegion& client_text, const TextRegion& resource_text)
+{
+    auto header = FindMatches(engine_text, kDemoHeaderSignature);
+    auto spawn = FindMatches(engine_text, kSpawnGroupSignature);
+    auto clear = FindMatches(engine_text, kClearTablesSignature);
+    auto server = FindMatches(engine_text, kServerInfoSignature);
+    // MulNX upstream f2466e18 (2026-09-27) anchors the shared string-parser
+    // exit to the following field-10 branch instead of hard-coding relative
+    // jump displacements.  The displacements change whenever Valve adds a
+    // protobuf field, while this context still uniquely identifies the
+    // CSVCMsg_GameSessionConfiguration parser in build 2000918.
+    auto session = FindMaskedMatches(engine_text, {
+        0x48, 0x8B, 0xD8, 0x48, 0x85, 0xC0, 0x0F, 0x85,
+        -1, -1, -1, -1, 0xE9, -1, -1, -1, -1,
+        0x40, 0x80, 0xFF, 0x52, 0x0F, 0x85, -1, -1, -1, -1, 0x83, 0x4E,
+    });
+    auto assign = FindMatches(engine_text, kUtlStringAssignSignature);
+    auto map_key_values = FindMaskedMatches(client_text, {
+        0x89, 0x5C, -1, -1, 0xA9, 0xFF, 0xFF, 0xFF, 0x7F, 0x76, 0x1C, 0xC1, 0xE8, 0x1F,
+        0x84, 0xC0, 0x75, 0x15, 0x48, 0x8B, 0x05, -1, -1, -1, -1, 0x48, 0x8B, 0x54, -1, -1,
+        0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01, 0xFF, 0x50, -1, 0x48, 0x85, 0xED, 0x48, 0x8B, 0x6C,
+    });
+    auto failed_resource = FindMaskedMatches(resource_text, {
+        0x8B, 0x0D, -1, -1, -1, -1, 0x4C, 0x8D, 0x0D, -1, -1, -1, -1, 0x41, 0xB8, 0xFF,
+        0x00, 0x00, 0xFF, 0x48, 0x89, 0x5C, -1, -1, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x48,
+        0x89, 0x44, -1, -1, 0xFF, 0x15,
+    });
+    // CS2 2000943, RVA 0x3F574E: CUtlSymbolTable::AddString, with the path in R8.
+    // The following invalid-symbol branch now uses R14's vector header (74 2B
+    // 41 8B 16), replacing the old 74 32 4C 8B B5 context. Keep it exact.
+    auto manifest_path = FindMaskedMatches(engine_text, {
+        0xFF, 0x15, -1, -1, -1, -1, 0x0F, 0xB7, 0x85, -1, -1, -1, -1, 0xB9, 0xFF, 0xFF,
+        0x00, 0x00, 0x66, 0x3B, 0xC1, 0x74, 0x2B, 0x41, 0x8B, 0x16,
+    });
+    auto request_resource = FindMatches(resource_text, kRequestResourceSignature);
+    auto find_resource = FindMatches(resource_text, kFindResourceSignature);
+    return {std::move(header), std::move(spawn), std::move(clear), std::move(server), std::move(session), std::move(assign), std::move(map_key_values), std::move(failed_resource), std::move(manifest_path), std::move(request_resource), std::move(find_resource)};
+}
+
 bool EnsureHooksInstalled()
 {
     std::lock_guard<std::mutex> lock(g_install_mutex);
@@ -1491,37 +1546,8 @@ bool EnsureHooksInstalled()
         return false;
     }
 
-    const auto header = FindMatches(*engine_text, kDemoHeaderSignature);
-    const auto spawn = FindMatches(*engine_text, kSpawnGroupSignature);
-    const auto clear = FindMatches(*engine_text, kClearTablesSignature);
-    const auto server = FindMatches(*engine_text, kServerInfoSignature);
-    // MulNX upstream f2466e18 (2026-09-27) anchors the shared string-parser
-    // exit to the following field-10 branch instead of hard-coding relative
-    // jump displacements.  The displacements change whenever Valve adds a
-    // protobuf field, while this context still uniquely identifies the
-    // CSVCMsg_GameSessionConfiguration parser in build 2000918.
-    const auto session = FindMaskedMatches(*engine_text, {
-        0x48, 0x8B, 0xD8, 0x48, 0x85, 0xC0, 0x0F, 0x85,
-        -1, -1, -1, -1, 0xE9, -1, -1, -1, -1,
-        0x40, 0x80, 0xFF, 0x52, 0x0F, 0x85, -1, -1, -1, -1, 0x83, 0x4E,
-    });
-    const auto assign = FindMatches(*engine_text, kUtlStringAssignSignature);
-    const auto map_key_values = FindMaskedMatches(*client_text, {
-        0x89, 0x5C, -1, -1, 0xA9, 0xFF, 0xFF, 0xFF, 0x7F, 0x76, 0x1C, 0xC1, 0xE8, 0x1F,
-        0x84, 0xC0, 0x75, 0x15, 0x48, 0x8B, 0x05, -1, -1, -1, -1, 0x48, 0x8B, 0x54, -1, -1,
-        0x48, 0x8B, 0x08, 0x48, 0x8B, 0x01, 0xFF, 0x50, -1, 0x48, 0x85, 0xED, 0x48, 0x8B, 0x6C,
-    });
-    const auto failed_resource = FindMaskedMatches(*resource_text, {
-        0x8B, 0x0D, -1, -1, -1, -1, 0x4C, 0x8D, 0x0D, -1, -1, -1, -1, 0x41, 0xB8, 0xFF,
-        0x00, 0x00, 0xFF, 0x48, 0x89, 0x5C, -1, -1, 0xBA, 0x03, 0x00, 0x00, 0x00, 0x48,
-        0x89, 0x44, -1, -1, 0xFF, 0x15,
-    });
-    const auto manifest_path = FindMaskedMatches(*engine_text, {
-        0xFF, 0x15, -1, -1, -1, -1, 0x0F, 0xB7, 0x85, -1, -1, -1, -1, 0xB9, 0xFF, 0xFF,
-        0x00, 0x00, 0x66, 0x3B, 0xC1, 0x74, 0x32, 0x4C, 0x8B, 0xB5,
-    });
-    const auto request_resource = FindMatches(*resource_text, kRequestResourceSignature);
-    const auto find_resource = FindMatches(*resource_text, kFindResourceSignature);
+    const auto [header, spawn, clear, server, session, assign, map_key_values, failed_resource, manifest_path, request_resource, find_resource] =
+        ResolveMapRemapHookSites(*engine_text, *client_text, *resource_text);
     const auto set_keyvalues_string = reinterpret_cast<KeyValuesSetStringFn>(GetProcAddress(
         tier0_module,
         "?SetString@KeyValues@@QEAAXPEBD0@Z"));
@@ -1682,6 +1708,30 @@ bool EnsureHooksInstalled()
         L"Map remap ready: the verified engine2 protobuf, client KeyValues, manifest, resource fallback, and VFileSystem radar texture chain is installed.");
     return true;
 }
+}
+
+std::array<nskinzcs2::runtime::MapRemapSignatureMatch, 11> nskinzcs2::runtime::ScanMapRemapSignatures(
+    const std::span<const std::uint8_t> engine_text,
+    const std::span<const std::uint8_t> client_text,
+    const std::span<const std::uint8_t> resource_text)
+{
+    const auto region = [](const auto bytes) {
+        return TextRegion {const_cast<std::uint8_t*>(bytes.data()), bytes.size()};
+    };
+    const auto sites = ResolveMapRemapHookSites(region(engine_text), region(client_text), region(resource_text));
+    return {{
+        {"header", sites.header.size()},
+        {"spawn", sites.spawn.size()},
+        {"clear", sites.clear.size()},
+        {"server", sites.server.size()},
+        {"session", sites.session.size()},
+        {"assign", sites.assign.size()},
+        {"map_key_values", sites.map_key_values.size()},
+        {"failed_resource", sites.failed_resource.size()},
+        {"manifest_path", sites.manifest_path.size()},
+        {"request_resource", sites.request_resource.size()},
+        {"find_resource", sites.find_resource.size()},
+    }};
 }
 
 bool nskinzcs2::runtime::BuildSourceSkyboxResourceRedirect(

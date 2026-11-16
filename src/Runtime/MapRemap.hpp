@@ -8,11 +8,26 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
+#include <span>
 #include <string>
 #include <string_view>
 
 namespace nskinzcs2::runtime
 {
+struct MapRemapSignatureMatch
+{
+    std::string_view name;
+    std::size_t matches = 0;
+};
+
+// Uses the exact resolver used before hook installation. Text is read-only;
+// this audit never loads engine modules or installs hooks.
+std::array<MapRemapSignatureMatch, 11> ScanMapRemapSignatures(
+    std::span<const std::uint8_t> engine_text,
+    std::span<const std::uint8_t> client_text,
+    std::span<const std::uint8_t> resource_text);
+
 struct MapRemapStatus
 {
     bool enabled = false;

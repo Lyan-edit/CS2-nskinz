@@ -52,6 +52,7 @@ bool g_export_workshop_radars = false;
 bool g_radar_only = false;
 bool g_glove_refresh_only = false;
 bool g_logging_only = false;
+bool g_map_remap_only = false;
 
 void WriteRadarPreviewIfRequested(
     const std::string_view name,
@@ -472,6 +473,54 @@ void TestCompatibilityManifest()
     Expect(
         has_reference_model_provider_signature,
         "the unverified model-provider entry must remain reference-only");
+}
+
+std::vector<std::uint8_t> ReadInstalledMapCode(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    const auto read = [&](auto& value) {
+        stream.read(reinterpret_cast<char*>(&value), sizeof(value));
+        Expect(static_cast<bool>(stream), "cannot read installed map-hook PE data");
+    };
+    IMAGE_DOS_HEADER dos {}; read(dos);
+    Expect(dos.e_magic == IMAGE_DOS_SIGNATURE && dos.e_lfanew > 0, "map-hook DOS header");
+    stream.seekg(dos.e_lfanew);
+    IMAGE_NT_HEADERS64 nt {}; read(nt);
+    Expect(nt.Signature == IMAGE_NT_SIGNATURE && nt.FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64 &&
+        nt.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC, "map-hook x64 PE required");
+    stream.seekg(dos.e_lfanew + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + nt.FileHeader.SizeOfOptionalHeader);
+    for (WORD i = 0; i < nt.FileHeader.NumberOfSections; ++i)
+    {
+        IMAGE_SECTION_HEADER section {}; read(section);
+        if (std::memcmp(section.Name, ".text", 5) != 0) continue;
+        Expect((section.Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0, "map-hook executable text required");
+        stream.seekg(section.PointerToRawData);
+        std::vector<std::uint8_t> bytes(std::min(section.SizeOfRawData, section.Misc.VirtualSize));
+        stream.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+        Expect(static_cast<bool>(stream), "cannot read map-hook text section");
+        return bytes;
+    }
+    throw std::runtime_error("map-hook module has no executable text");
+}
+
+void TestInstalledMapRemapSignatures()
+{
+    if (g_compatibility_cs2_root.empty())
+    {
+        Expect(!g_map_remap_only, "--map-remap-only requires --cs2-root");
+        return;
+    }
+    const auto game = g_compatibility_cs2_root / L"game";
+    const auto engine = ReadInstalledMapCode(game / L"bin/win64/engine2.dll");
+    const auto client = ReadInstalledMapCode(game / L"csgo/bin/win64/client.dll");
+    const auto resource = ReadInstalledMapCode(game / L"bin/win64/resourcesystem.dll");
+    const auto matches = nskinzcs2::runtime::ScanMapRemapSignatures(engine, client, resource);
+    for (const auto& match : matches)
+    {
+        std::cout << "[MAP-COMPAT] " << match.name << " matches=" << match.matches << '\n';
+        Expect(match.matches == 1, "all map-remap hook sites must match exactly once before installation");
+    }
+    std::cout << "map_remap_installed_signatures=PASS; hook_sites=11; native_game_calls=0\n";
 }
 
 void TestInstalledCompatibilityIfRequested()
@@ -7161,6 +7210,11 @@ int RunAllTests()
 {
     try
     {
+        if (g_map_remap_only)
+        {
+            RunNamedTest("TestInstalledMapRemapSignatures", TestInstalledMapRemapSignatures);
+            return EXIT_SUCCESS;
+        }
         if (g_logging_only)
         {
             RunNamedTest("TestUnicodeRewriteFailureLogging", TestUnicodeRewriteFailureLogging);
@@ -7246,6 +7300,7 @@ int RunAllTests()
         RunNamedTest("TestCompatibilityManifest", TestCompatibilityManifest);
         RunNamedTest("TestCatalogStoreRoundTrip", TestCatalogStoreRoundTrip);
         RunNamedTest("TestInstalledCompatibilityIfRequested", TestInstalledCompatibilityIfRequested);
+        RunNamedTest("TestInstalledMapRemapSignatures", TestInstalledMapRemapSignatures);
         RunNamedTest("TestConfigRoundTrip", TestConfigRoundTrip);
         RunNamedTest("TestStickerPreviewNativePlacement", TestStickerPreviewNativePlacement);
         RunNamedTest("TestWorkshopMapDiscovery", TestWorkshopMapDiscovery);
@@ -7356,6 +7411,10 @@ void ParseArguments(const int argc, wchar_t** argv)
         else if (argument == L"--logging-only")
         {
             g_logging_only = true;
+        }
+        else if (argument == L"--map-remap-only")
+        {
+            g_map_remap_only = true;
         }
     }
 }
