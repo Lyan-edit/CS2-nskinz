@@ -66,4 +66,10 @@ std::optional<WorkshopRadarTexture> ReadWorkshopRadarTexture(
     DWORD cs2_process_id = 0,
     std::wstring* diagnostic = nullptr);
 
+#ifdef NSKINZCS2_TESTS
+bool ReadWorkshopVpkEntryForTests(const std::filesystem::path& index_path,
+    std::uint16_t archive, std::uint32_t offset, std::uint32_t length,
+    std::vector<std::uint8_t>& output);
+#endif
+
 }

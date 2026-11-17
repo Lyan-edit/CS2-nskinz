@@ -1,3 +1,4 @@
+#include "Core/BinaryRead.hpp"
 #include "Cs2/Runtime.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Cs2/Compatibility.hpp"
@@ -20,6 +21,7 @@
 #include "Runtime/KnifeUpdateProbe.hpp"
 #include "Runtime/KnifeAppearance.hpp"
 #include "Runtime/MapRemap.hpp"
+#include "Runtime/LiveConfig.hpp"
 #include "Runtime/WeaponAppearance.hpp"
 #include "Runtime/WeaponMaterialInit.hpp"
 #include "MinHook.h"
@@ -552,27 +554,6 @@ bool ReadStreamBinaryValue(std::ifstream& stream, T& value)
     return static_cast<bool>(stream);
 }
 
-bool ReadNullTerminatedString(std::ifstream& stream, std::string& value)
-{
-    value.clear();
-    while (true)
-    {
-        char ch = '\0';
-        stream.read(&ch, sizeof(ch));
-        if (!stream)
-        {
-            return false;
-        }
-
-        if (ch == '\0')
-        {
-            return true;
-        }
-
-        value.push_back(ch);
-    }
-}
-
 std::optional<VpkHeader> ReadVpkHeader(std::ifstream& stream)
 {
     std::uint32_t signature = 0;
@@ -649,11 +630,11 @@ std::optional<std::vector<std::uint8_t>> ReadBinaryFromVpk(
     std::string filename;
     std::optional<VpkEntryLocation> match;
 
-    while (ReadNullTerminatedString(directory_stream, extension) && !extension.empty())
+    while (nskinzcs2::ReadVpkTreeString(directory_stream, extension, tree_end_offset) && !extension.empty())
     {
-        while (ReadNullTerminatedString(directory_stream, directory) && !directory.empty())
+        while (nskinzcs2::ReadVpkTreeString(directory_stream, directory, tree_end_offset) && !directory.empty())
         {
-            while (ReadNullTerminatedString(directory_stream, filename) && !filename.empty())
+            while (nskinzcs2::ReadVpkTreeString(directory_stream, filename, tree_end_offset) && !filename.empty())
             {
                 VpkEntryLocation entry {};
                 std::uint32_t crc = 0;
@@ -728,7 +709,6 @@ std::optional<std::vector<std::uint8_t>> ReadBinaryFromVpk(
     }
 
     std::vector<std::uint8_t> payload;
-    payload.reserve(static_cast<std::size_t>(match->preload_bytes) + static_cast<std::size_t>(match->length));
 
     if (match->preload_bytes > 0)
     {
@@ -769,12 +749,12 @@ std::optional<std::vector<std::uint8_t>> ReadBinaryFromVpk(
     const auto payload_offset = match->archive_index == kVpkDirectoryArchiveIndex
         ? static_cast<std::uint64_t>(tree_end_offset) + header->file_data_section_size + match->offset
         : static_cast<std::uint64_t>(match->offset);
-    payload_stream.seekg(static_cast<std::streamoff>(payload_offset), std::ios::beg);
-    if (!payload_stream)
+    if (!nskinzcs2::SeekToAvailableRange(payload_stream, payload_offset, match->length))
     {
         return std::nullopt;
     }
 
+    payload.reserve(payload.size() + static_cast<std::size_t>(match->length));
     std::vector<std::uint8_t> archive_payload(static_cast<std::size_t>(match->length));
     payload_stream.read(reinterpret_cast<char*>(archive_payload.data()), static_cast<std::streamsize>(archive_payload.size()));
     if (!payload_stream)
@@ -14627,8 +14607,8 @@ void AdvanceWearableFactoryCacheAtFrameRenderPass()
         return;
     }
 
-    const auto config = g_hook_state.app_state->SnapshotConfig();
-    if (!ConfigRequestsRuntimeWearableFactory(config))
+    const auto config_snapshot = g_hook_state.app_state->SnapshotConfigVersioned();
+    if (!ConfigRequestsRuntimeWearableFactory(*config_snapshot.document))
     {
         return;
     }
@@ -53774,7 +53754,8 @@ bool TryProcessPendingWeaponRefreshRequests(
         std::any_of(requests.begin(), requests.end(), [](const auto& request)
             { return IsKnifeProfile(request.profile); }))
     {
-        for (const auto& profile : g_hook_state.app_state->SnapshotConfig().knife_profiles)
+        const auto snapshot = g_hook_state.app_state->SnapshotConfigVersioned();
+        for (const auto& profile : snapshot.document->knife_profiles)
             if (nskinzcs2::runtime::KnifeProfileUsesLiveFinish(profile))
                 live_finish_xuids.insert(profile.xuid);
     }
@@ -83913,21 +83894,20 @@ void PollGameThreadStateModern()
     // until after IsPlayingDemo() succeeded.  That made a valid, armed profile
     // look disabled while CS2 was in the menu (and hid the real reason no write
     // was attempted).
-    nskinzcs2::model::ConfigDocument config;
-    std::uint64_t config_revision = 0;
+    nskinzcs2::VersionedConfigSnapshot config_snapshot;
     if (g_hook_state.app_state != nullptr)
     {
-        config = g_hook_state.app_state->SnapshotConfig();
-        config_revision = g_hook_state.app_state->ConfigRevision();
+        config_snapshot = g_hook_state.app_state->SnapshotConfigVersioned();
     }
+    const auto config_revision = config_snapshot.revision;
 
     // Apply the mode contract before every early-exit, pre-arm and lifecycle
     // path. Finish-only stays live on both original and generated recordings;
     // model+finish never enters the injected model or finish fallback chains.
-    const auto knife_hud_profiles = config.knife_profiles;
-    for (auto& profile : config.profiles)
-        profile.stickers = {};
-    nskinzcs2::runtime::RestrictKnifeProfilesToLiveFinish(config.knife_profiles);
+    static thread_local nskinzcs2::runtime::LiveConfigCache live_config;
+    const auto& config = live_config.Get(config_snapshot);
+    const auto& knife_hud_profiles = config_snapshot.document
+        ? config_snapshot.document->knife_profiles : config.knife_profiles;
     const auto current_demo_file_path = SnapshotCurrentDemoFilePath();
     const auto generated_demo_skin =
         nskinzcs2::runtime::IsGeneratedDemoSkinPath(current_demo_file_path);
@@ -88770,7 +88750,6 @@ void HookedClientFrameStageNotify(void* this_ptr, int cur_stage)
 {
     nskinzcs2::Logger::DeferredScope deferred_diagnostics;
     RuntimePerfScope callback_performance(RuntimePerfPhase::RenderCallback, cur_stage == kCs2FrameRenderPass);
-    NoteObservedSource2ClientInstance(this_ptr, L"Source2Client::FrameStageNotify");
     const auto current_thread_id = GetCurrentThreadId();
     DWORD expected_thread_id = 0;
     if (!g_hook_state.frame_stage_thread_id.compare_exchange_strong(
@@ -88778,14 +88757,22 @@ void HookedClientFrameStageNotify(void* this_ptr, int cur_stage)
             current_thread_id,
             std::memory_order_acq_rel,
             std::memory_order_acquire) &&
-        expected_thread_id != current_thread_id &&
-        !g_hook_state.frame_stage_thread_mismatch_logged.exchange(true))
+        expected_thread_id != current_thread_id)
     {
-        std::wstringstream stream;
-        stream << L"FrameStageNotify changed threads; runtime refresh will fail closed: expected="
-            << expected_thread_id << L", observed=" << current_thread_id << L".";
-        nskinzcs2::Logger::Warn(stream.str());
+        if (!g_hook_state.frame_stage_thread_mismatch_logged.exchange(true))
+        {
+            std::wstringstream stream;
+            stream << L"FrameStageNotify changed threads; runtime refresh will fail closed: expected="
+                << expected_thread_id << L", observed=" << current_thread_id << L".";
+            nskinzcs2::Logger::Warn(stream.str());
+        }
+        // Never touch game-thread-owned caches/transactions on a foreign
+        // callback thread. Forward the engine callback exactly once.
+        if (g_hook_state.original_frame_stage_notify != nullptr)
+            g_hook_state.original_frame_stage_notify(this_ptr, cur_stage);
+        return;
     }
+    NoteObservedSource2ClientInstance(this_ptr, L"Source2Client::FrameStageNotify");
     g_hook_state.frame_seen.store(true);
     g_hook_state.last_frame_stage.store(cur_stage);
     const auto frame_count = g_hook_state.frame_callback_count.fetch_add(1) + 1;
@@ -93481,5 +93468,34 @@ std::wstring nskinzcs2::runtime::ProbeBuildKnifeCarrierRuntimeReasonTextForTests
         no_exposed_non_synthetic_render_owner,
         carrier_result,
         factory_feasibility);
+}
+#endif
+
+#ifdef NSKINZCS2_TESTS
+bool nskinzcs2::runtime::ProbeFrameThreadMismatchForTests()
+{
+    static unsigned int original_calls = 0;
+    original_calls = 0;
+    const auto original = g_hook_state.original_frame_stage_notify;
+    const auto thread = g_hook_state.frame_stage_thread_id.load();
+    const auto callbacks = g_hook_state.frame_callback_count.load();
+    const auto stage = g_hook_state.last_frame_stage.load();
+    const auto seen = g_hook_state.frame_seen.load();
+    const auto first = g_hook_state.first_frame_logged.load();
+    const auto logged = g_hook_state.frame_stage_thread_mismatch_logged.load();
+    g_hook_state.original_frame_stage_notify = [](void*, int) { ++original_calls; };
+    g_hook_state.frame_stage_thread_id.store(GetCurrentThreadId() ^ 0x40000000u);
+    HookedClientFrameStageNotify(nullptr, -100);
+    const bool isolated = original_calls == 1 &&
+        g_hook_state.frame_callback_count.load() == callbacks &&
+        g_hook_state.last_frame_stage.load() == stage && g_hook_state.frame_seen.load() == seen;
+    g_hook_state.original_frame_stage_notify = original;
+    g_hook_state.frame_stage_thread_id.store(thread);
+    g_hook_state.frame_callback_count.store(callbacks);
+    g_hook_state.last_frame_stage.store(stage);
+    g_hook_state.frame_seen.store(seen);
+    g_hook_state.first_frame_logged.store(first);
+    g_hook_state.frame_stage_thread_mismatch_logged.store(logged);
+    return isolated;
 }
 #endif

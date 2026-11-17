@@ -90,6 +90,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="src\Core\AppState.hpp" />
+    <ClInclude Include="src\Core\BinaryRead.hpp" />
+    <ClInclude Include="src\Runtime\LiveConfig.hpp" />
     <ClInclude Include="src\Core\Config.hpp" />
     <ClInclude Include="src\Cs2\Catalog.hpp" />
     <ClInclude Include="src\Cs2\CatalogStore.hpp" />
@@ -158,6 +160,7 @@
     <ClCompile Include="src\Runtime\RadarNativeCompiler.cpp" />
     <ClCompile Include="src\Runtime\WorkshopMaps.cpp" />
     <ClCompile Include="src\Tests\Main.cpp" />
+    <ClCompile Include="src\Tests\StabilityTests.cpp" />
     <ClCompile Include="src\UI\StickerPreviewPlacement.generated.cpp">
       <Optimization>Disabled</Optimization>
       <WholeProgramOptimization>false</WholeProgramOptimization>

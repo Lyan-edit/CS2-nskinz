@@ -31,6 +31,8 @@ bool documentation_capture = false;
 bool keychain_capture = false;
 bool missing_xuid_capture = false;
 int finish_capture = 0;
+bool occlusion_probe = false;
+bool resize_probe = false;
 
 bool SaveFrame(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
@@ -103,11 +105,48 @@ bool UiPreviewMissingXuidCapture()
 
 int UiPreviewFinishCapture() { return finish_capture; }
 
+HRESULT PresentUiPreview(IDXGISwapChain* chain)
+{
+    if (occlusion_probe) return DXGI_STATUS_OCCLUDED;
+    if (UiPreviewFailOnce("present")) return DXGI_ERROR_DEVICE_REMOVED;
+    return chain->Present(1, 0);
+}
+
 bool CompleteUiPreviewCapture(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* chain)
 {
     static int frames = 0;
-    if (++frames < 5) return false;
-    const bool saved = SaveFrame(device, context, chain);
+    ++frames;
+    if (resize_probe && frames == 2)
+    {
+        DXGI_SWAP_CHAIN_DESC desc {};
+        if (FAILED(chain->GetDesc(&desc)) || !SetWindowPos(desc.OutputWindow, nullptr, 0, 0, 1280, 900,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) return true;
+    }
+    if (occlusion_probe)
+    {
+        static const auto start = std::chrono::steady_clock::now();
+        if (std::chrono::steady_clock::now() - start < std::chrono::seconds(1)) return false;
+        nskinzcs2::Logger::Info(L"Occluded UI frames in one second=" + std::to_wstring(frames));
+        capture_succeeded.store(frames <= 30 && SaveFrame(device, context, chain));
+        return true;
+    }
+    if (frames < 5) return false;
+    bool dimensions_match = true;
+    if (resize_probe)
+    {
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> buffer;
+        DXGI_SWAP_CHAIN_DESC chain_desc {}; D3D11_TEXTURE2D_DESC desc {}; RECT client {};
+        dimensions_match = SUCCEEDED(chain->GetDesc(&chain_desc)) &&
+            GetClientRect(chain_desc.OutputWindow, &client) && SUCCEEDED(chain->GetBuffer(0, IID_PPV_ARGS(&buffer)));
+        if (dimensions_match)
+        {
+            buffer->GetDesc(&desc);
+            dimensions_match = desc.Width == static_cast<UINT>(client.right) &&
+                desc.Height == static_cast<UINT>(client.bottom) && desc.Width > 1100;
+        }
+        nskinzcs2::Logger::Info(dimensions_match ? L"UI resize/backbuffer recovery verified." : L"UI resize/backbuffer recovery failed.");
+    }
+    const bool saved = dimensions_match && SaveFrame(device, context, chain);
     capture_succeeded.store(saved);
     nskinzcs2::Logger::Info(saved ? L"Real UI frame exported successfully." : L"UI frame export failed.");
     return true;
@@ -116,6 +155,8 @@ bool CompleteUiPreviewCapture(ID3D11Device* device, ID3D11DeviceContext* context
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
 {
     const std::wstring_view arguments(command_line != nullptr ? command_line : L"");
+    resize_probe = arguments.find(L"--resize-probe") != std::wstring_view::npos;
+    occlusion_probe = arguments.find(L"--occlusion-probe") != std::wstring_view::npos;
     documentation_capture = arguments.find(L"--documentation") != std::wstring_view::npos;
     keychain_capture = arguments.find(L"--keychain") != std::wstring_view::npos;
     missing_xuid_capture = arguments.find(L"--missing-xuid") != std::wstring_view::npos;
@@ -127,6 +168,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (arguments.find(L"--fail-construction-once") != std::wstring_view::npos) fault_phase = "construction";
     if (arguments.find(L"--fail-resources-once") != std::wstring_view::npos) fault_phase = "resources";
     if (arguments.find(L"--fail-device-once") != std::wstring_view::npos) fault_phase = "resources-return";
+    if (arguments.find(L"--fail-present-once") != std::wstring_view::npos) fault_phase = "present";
     std::wstring image(32768, L'\0');
     const auto length = GetModuleFileNameW(nullptr, image.data(), static_cast<DWORD>(image.size()));
     if (length == 0 || length >= image.size()) return 1;

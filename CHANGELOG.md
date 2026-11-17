@@ -1,5 +1,18 @@
 # Changelog / 更新记录
 
+## v0.7.5 — 2026-11-17
+
+- Publish coherent immutable configuration snapshots and reuse the derived live config instead of copying profiles on every maintenance poll. Preserve finish/model routing and HUD source profiles.
+- 原子发布配置与版本号，复用实时配置，减少轮询复制，保留饰面/模型分流及 HUD 来源配置。
+- Throttle occluded/minimized control-panel rendering, recover failed graphics resources without discarding edits or rewrite tasks, and validate backbuffer resize/recreation.
+- 限制被遮挡／最小化面板的渲染，图形失败后保留编辑与重建任务并允许 Insert 重试，校验窗口缩放与渲染目标重建。
+- Validate VPK payload ranges before allocation, bound tree strings, and forward foreign-thread frame callbacks without changing game-thread state.
+- VPK 分配前验证文件范围并限制目录字符串；异线程帧回调只转发原函数，不更改游戏线程状态。
+- Retain the v0.7.5-beta Workshop manifest hook repair; full offline regression, 42 parser tests, 30 ordinary rewriter tests and 12 panel scenarios pass. Gameplay frame-time acceptance remains pending.
+- 保留 Beta 工坊换图 manifest 修复；完整离线回归、42 项解析器、30 项重建器普通测试及 12 个面板场景通过，游戏内帧时仍待实测。
+
+See [release notes](docs/releases/v0.7.5.md) and [stability audit](docs/diagnostics/stability-audit-20261117.md).
+
 ## v0.6.3 — 2026-10-31 reissue / 重新定版
 
 - Synchronized the Temporary Demo knife entity, death-event identity and right-side HUD name with the selected knife definition and paint. Finish-only remains a live material hotpatch but now refreshes its client HUD identity; Model + Finish remains Temporary-Demo-only.

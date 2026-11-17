@@ -381,6 +381,12 @@ struct Status
 
 namespace nskinzcs2
 {
+struct VersionedConfigSnapshot
+{
+    std::shared_ptr<const model::ConfigDocument> document;
+    std::uint64_t revision = 0;
+};
+
 class AppState
 {
 public:
@@ -388,8 +394,13 @@ public:
 
     model::ConfigDocument SnapshotConfig() const
     {
-        std::scoped_lock lock(mutex_);
-        return config_;
+        return *SnapshotConfigVersioned().document;
+    }
+
+    VersionedConfigSnapshot SnapshotConfigVersioned() const
+    {
+        std::scoped_lock lock(config_mutex_);
+        return {config_, config_revision_.load(std::memory_order_relaxed)};
     }
 
     model::Catalog SnapshotCatalog() const
@@ -441,9 +452,12 @@ public:
 
     void ReplaceConfig(model::ConfigDocument document)
     {
-        std::scoped_lock lock(mutex_);
-        config_ = std::move(document);
-        ++config_revision_;
+        auto replacement = std::make_shared<const model::ConfigDocument>(std::move(document));
+        {
+            std::scoped_lock lock(config_mutex_);
+            config_.swap(replacement);
+            ++config_revision_;
+        }
     }
 
     void ReplaceCatalog(model::Catalog catalog)
@@ -526,8 +540,9 @@ public:
 
 private:
     mutable std::mutex mutex_;
+    mutable std::mutex config_mutex_;
     mutable std::mutex catalog_mutex_;
-    model::ConfigDocument config_;
+    std::shared_ptr<const model::ConfigDocument> config_ = std::make_shared<const model::ConfigDocument>();
     std::shared_ptr<const model::Catalog> catalog_ = std::make_shared<const model::Catalog>();
     runtime::Status status_;
     std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> glove_apply_carriers_;

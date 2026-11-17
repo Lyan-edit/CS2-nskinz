@@ -39,6 +39,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -49,6 +50,7 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #ifdef NSKINZCS2_UI_CAPTURE
+HRESULT PresentUiPreview(IDXGISwapChain*);
 bool CompleteUiPreviewCapture(ID3D11Device*, ID3D11DeviceContext*, IDXGISwapChain*);
 bool UiPreviewFailOnce(const char* phase);
 bool UiPreviewRetryAfterFailure();
@@ -63,6 +65,12 @@ namespace
 using nskinzcs2::AppState;
 using nskinzcs2::ConfigStore;
 using nskinzcs2::Logger;
+
+class UiGraphicsFailure : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 using nskinzcs2::model::Catalog;
 using nskinzcs2::model::ConfigDocument;
 using nskinzcs2::model::CosmeticProfile;
@@ -1216,13 +1224,25 @@ public:
             if (!stop_requested_.load() && UiPreviewRetryAfterFailure()) HandleInsertToggle(true);
 #endif
 
-            if (resources_created_ && state_.WindowVisible())
+            if (resources_created_ && state_.WindowVisible() && !IsIconic(hwnd_))
             {
-                DrawFrame();
+                try
+                {
+                    DrawFrame();
+                }
+                catch (const UiGraphicsFailure& error)
+                {
+                    Logger::Warn(Wide(error.what()));
+                    state_.SetWindowVisible(false);
+                    Cleanup();
+                    // Keep the controller/config/future alive. Destroying an
+                    // async future here could wait for a ten-minute rewrite.
+                    // Insert recreates only the failed graphics resources.
+                }
             }
             else
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(resources_created_ ? 16 : 50));
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         }
 
@@ -1323,6 +1343,7 @@ private:
         UpdateWindow(hwnd_);
         state_.SetWindowVisible(false);
         resources_created_ = true;
+        present_failure_logged_ = false;
         return true;
     }
 
@@ -1416,6 +1437,7 @@ private:
         }
 
         resources_created_ = false;
+        resize_pending_ = false;
 
         if (window_class_registered_)
         {
@@ -1486,11 +1508,10 @@ private:
             return false;
         }
 
-        CreateRenderTarget();
-        return true;
+        return CreateRenderTarget();
     }
 
-    void CreateRenderTarget()
+    bool CreateRenderTarget()
     {
         ID3D11Texture2D* back_buffer = nullptr;
         if (SUCCEEDED(swap_chain_->GetBuffer(0, IID_PPV_ARGS(&back_buffer))))
@@ -1498,6 +1519,7 @@ private:
             device_->CreateRenderTargetView(back_buffer, nullptr, &render_target_view_);
             back_buffer->Release();
         }
+        return render_target_view_ != nullptr;
     }
 
     void CleanupRenderTarget()
@@ -1511,9 +1533,13 @@ private:
 
     void ResetDevice()
     {
+        // The immediate context also retains the old backbuffer. Release that
+        // binding before ResizeBuffers; otherwise DXGI can reject every resize.
+        device_context_->OMSetRenderTargets(0, nullptr, nullptr);
         CleanupRenderTarget();
-        swap_chain_->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
-        CreateRenderTarget();
+        if (FAILED(swap_chain_->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0)) || !CreateRenderTarget())
+            throw UiGraphicsFailure("External UI backbuffer resize failed; press Insert to recreate the panel.");
+        resize_pending_ = false;
     }
 
     void HandleInsertToggle(const bool reopen_after_failure = false)
@@ -1574,9 +1600,10 @@ private:
 
     void DrawFrame()
     {
+        if (resize_pending_) ResetDevice();
         if (swap_chain_ == nullptr || device_context_ == nullptr || render_target_view_ == nullptr)
         {
-            return;
+            throw UiGraphicsFailure("External UI render target is unavailable; press Insert to recreate the panel.");
         }
 
         if (!first_frame_started_)
@@ -1618,7 +1645,17 @@ private:
             return;
         }
 #endif
+#ifdef NSKINZCS2_UI_CAPTURE
+        const auto present_result = PresentUiPreview(swap_chain_);
+#else
         const auto present_result = swap_chain_->Present(1, 0);
+#endif
+        if (present_result == DXGI_STATUS_OCCLUDED)
+        {
+            // Present does not wait for vsync for an occluded window.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            return;
+        }
         if (FAILED(present_result))
         {
             if (!present_failure_logged_)
@@ -1630,7 +1667,7 @@ private:
                        << static_cast<unsigned long>(present_result);
                 Logger::Warn(stream.str());
             }
-            return;
+            throw UiGraphicsFailure("External UI graphics device failed; press Insert to recreate the panel.");
         }
         if (!first_frame_presented_)
         {
@@ -4246,9 +4283,9 @@ private:
         case WM_SIZE:
             if (device_ != nullptr && swap_chain_ != nullptr && wparam != SIZE_MINIMIZED)
             {
-                CleanupRenderTarget();
-                swap_chain_->ResizeBuffers(0, static_cast<UINT>(LOWORD(lparam)), static_cast<UINT>(HIWORD(lparam)), DXGI_FORMAT_UNKNOWN, 0);
-                CreateRenderTarget();
+                // Process failures inside the C++ render-loop exception guard,
+                // never unwind a C++ exception across the Win32 WndProc ABI.
+                resize_pending_ = true;
             }
             return 0;
         case WM_SYSCOMMAND:
@@ -4329,6 +4366,7 @@ private:
     bool first_imgui_frame_started_ = false;
     bool first_frame_presented_ = false;
     bool present_failure_logged_ = false;
+    bool resize_pending_ = false;
 
     HWND hwnd_ = nullptr;
     ID3D11Device* device_ = nullptr;

@@ -1,3 +1,4 @@
+#include "Core/BinaryRead.hpp"
 #include "Core/AppState.hpp"
 #include "Core/BuildConfig.hpp"
 #include "Core/Config.hpp"
@@ -229,24 +230,6 @@ bool ReadBinaryValue(std::ifstream& stream, T& value)
     return static_cast<bool>(stream.read(reinterpret_cast<char*>(&value), sizeof(value)));
 }
 
-bool ReadNullTerminatedString(std::ifstream& stream, std::string& value)
-{
-    value.clear();
-
-    char character = '\0';
-    while (stream.get(character))
-    {
-        if (character == '\0')
-        {
-            return true;
-        }
-
-        value.push_back(character);
-    }
-
-    return false;
-}
-
 std::optional<VpkHeader> ReadVpkHeader(std::ifstream& stream)
 {
     VpkHeader header;
@@ -327,11 +310,11 @@ std::optional<std::string> ReadTextFromVpk(
     std::string filename;
     std::optional<VpkEntryLocation> match;
 
-    while (ReadNullTerminatedString(directory_stream, extension) && !extension.empty())
+    while (nskinzcs2::ReadVpkTreeString(directory_stream, extension, tree_end_offset) && !extension.empty())
     {
-        while (ReadNullTerminatedString(directory_stream, directory) && !directory.empty())
+        while (nskinzcs2::ReadVpkTreeString(directory_stream, directory, tree_end_offset) && !directory.empty())
         {
-            while (ReadNullTerminatedString(directory_stream, filename) && !filename.empty())
+            while (nskinzcs2::ReadVpkTreeString(directory_stream, filename, tree_end_offset) && !filename.empty())
             {
                 VpkEntryLocation entry;
                 std::uint32_t crc = 0;
@@ -404,7 +387,6 @@ std::optional<std::string> ReadTextFromVpk(
     }
 
     std::string text;
-    text.reserve(match->preload_bytes + match->length);
 
     if (match->preload_bytes > 0)
     {
@@ -444,8 +426,7 @@ std::optional<std::string> ReadTextFromVpk(
     const auto payload_offset = match->archive_index == kVpkDirectoryArchiveIndex
         ? static_cast<std::uint64_t>(tree_end_offset) + header->file_data_section_size + match->offset
         : static_cast<std::uint64_t>(match->offset);
-    payload_stream.seekg(static_cast<std::streamoff>(payload_offset), std::ios::beg);
-    if (!payload_stream)
+    if (!nskinzcs2::SeekToAvailableRange(payload_stream, payload_offset, match->length))
     {
         return std::nullopt;
     }

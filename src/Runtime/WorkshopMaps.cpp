@@ -3,6 +3,7 @@
 // see NOTICE.md.
 
 #include "Runtime/WorkshopMaps.hpp"
+#include "Core/BinaryRead.hpp"
 
 #include <algorithm>
 #include <array>
@@ -428,8 +429,7 @@ bool ReadVpkEntryBytes(
     {
         return false;
     }
-    stream.seekg(static_cast<std::streamoff>(absolute_offset));
-    if (!stream)
+    if (!nskinzcs2::SeekToAvailableRange(stream, absolute_offset, entry.length))
     {
         return false;
     }
@@ -873,3 +873,14 @@ nskinzcs2::runtime::ReadWorkshopRadarTexture(
         std::wstring(target_map_name.begin(), target_map_name.end()) + L".");
     return std::nullopt;
 }
+
+#ifdef NSKINZCS2_TESTS
+bool nskinzcs2::runtime::ReadWorkshopVpkEntryForTests(const std::filesystem::path& path,
+    std::uint16_t archive, std::uint32_t offset, std::uint32_t length,
+    std::vector<std::uint8_t>& output)
+{
+    VpkEntryRecord entry;
+    entry.archive_index = archive; entry.offset = offset; entry.length = length;
+    return ReadVpkEntryBytes(path, entry, output);
+}
+#endif

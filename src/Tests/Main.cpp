@@ -39,6 +39,7 @@ void RunKnifeModelTests();
 void RunKnifeGraphTests();
 void RunKnifePairTests();
 void RunDemoSkinRewriteTests();
+void RunStabilityTests();
 
 namespace
 {
@@ -53,6 +54,7 @@ bool g_radar_only = false;
 bool g_glove_refresh_only = false;
 bool g_logging_only = false;
 bool g_map_remap_only = false;
+bool g_stability_only = false;
 
 void WriteRadarPreviewIfRequested(
     const std::string_view name,
@@ -7210,6 +7212,12 @@ int RunAllTests()
 {
     try
     {
+        if (g_stability_only)
+        {
+            RunNamedTest("TestStability", RunStabilityTests);
+            std::cout << "stability regression passed (no game process)\n";
+            return EXIT_SUCCESS;
+        }
         if (g_map_remap_only)
         {
             RunNamedTest("TestInstalledMapRemapSignatures", TestInstalledMapRemapSignatures);
@@ -7287,6 +7295,7 @@ int RunAllTests()
                 << " missing_dirty_rejected=" << result.missing_dirty_data_rejected << '\n';
             return result.both_masks_verified ? EXIT_SUCCESS : EXIT_FAILURE;
         }
+        RunNamedTest("TestStability", RunStabilityTests);
         RunNamedTest("TestIndependentKnifeModel", RunKnifeModelTests);
         RunNamedTest("TestKnifeGraphParameter", RunKnifeGraphTests);
         RunNamedTest("TestKnifePairTransaction", RunKnifePairTests);
@@ -7411,6 +7420,10 @@ void ParseArguments(const int argc, wchar_t** argv)
         else if (argument == L"--logging-only")
         {
             g_logging_only = true;
+        }
+        else if (argument == L"--stability-only")
+        {
+            g_stability_only = true;
         }
         else if (argument == L"--map-remap-only")
         {

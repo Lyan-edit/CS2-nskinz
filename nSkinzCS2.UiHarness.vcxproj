@@ -141,6 +141,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="src\Core\AppState.hpp" />
+    <ClInclude Include="src\Core\BinaryRead.hpp" />
+    <ClInclude Include="src\Runtime\LiveConfig.hpp" />
     <ClInclude Include="src\Core\BuildConfig.hpp" />
     <ClInclude Include="src\Core\Config.hpp" />
     <ClInclude Include="src\Core\Log.hpp" />
