@@ -505,7 +505,7 @@ DWORD BootstrapThreadImpl(void* instance)
 {
     auto* module = static_cast<HMODULE>(instance);
     g_base_directory = ResolveModuleDirectory(module);
-    g_config_path = g_base_directory / L"nSkinzCS2.json";
+    g_config_path = g_base_directory / nskinzcs2::build::kConfigFileName;
 
     nskinzcs2::Logger::Initialize(g_base_directory.wstring());
     std::wstringstream version_stream;
@@ -582,7 +582,14 @@ DWORD BootstrapThreadImpl(void* instance)
     }
 
     g_state->ReplaceCatalog(std::move(catalog));
-    g_state->ReplaceConfig(nskinzcs2::ConfigStore::LoadApplied(g_config_path));
+    if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+        g_state->ReplaceConfig({});
+        if (!nskinzcs2::ConfigStore::BeginRuntimeSession(g_config_path,GetCurrentProcessId())) {
+            nskinzcs2::Logger::Error(L"Could not initialize an empty runtime session; control panel activation cancelled to avoid replaying stale settings.");
+            return 0;
+        }
+        nskinzcs2::Logger::Info(L"Runtime session starts empty; saved editor and historical applied settings are not activated.");
+    } else g_state->ReplaceConfig(nskinzcs2::ConfigStore::LoadApplied(g_config_path));
 
     g_runtime = std::make_unique<nskinzcs2::RuntimeController>(*g_state, module);
     g_runtime->Start();

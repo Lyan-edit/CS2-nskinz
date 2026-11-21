@@ -1,5 +1,13 @@
 # Changelog / 更新记录
 
+## [0.7.6] - 2026-11-21
+
+- Route guns, all knife/glove modes including default T/CT gloves, and five sticker slots through live changes; retain current-holder targeting and right-side HUD synchronization.
+- Reconstruct charms only; suspend unfinished live charm creation and retain its research checkpoint.
+- Restore Workshop map reloads and fixed transparent radars without requiring a cosmetic XUID.
+- Isolate applied transactions per process and start empty on DLL load; each Apply submits only the current item.
+- Refresh bilingual release packages, notices, cover and actual native UI capture.
+
 ## v0.7.5 — 2026-11-17
 
 - Publish coherent immutable configuration snapshots and reuse the derived live config instead of copying profiles on every maintenance poll. Preserve finish/model routing and HUD source profiles.

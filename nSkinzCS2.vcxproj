@@ -63,14 +63,14 @@
   <PropertyGroup>
     <IntDir>$(ProjectDir)build\$(Configuration)\$(ProjectName)\</IntDir>
     <OutDir>$(ProjectDir)build\$(Configuration)\</OutDir>
-    <TargetName>Lyan_nskinz v0.7.5 EN</TargetName>
+    <TargetName>Lyan_nskinz-v0.7.6-EN</TargetName>
     <VCToolsVersion>14.44.35207</VCToolsVersion>
     <IncludePath>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\json;$(ProjectDir)third_party\MinHook\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseZhCn|x64'">
     <IntDir>$(ProjectDir)build\ReleaseZhCn\$(ProjectName)\</IntDir>
     <OutDir>$(ProjectDir)build\Release\</OutDir>
-    <TargetName>Lyan_nskinz v0.7.5 zh-CN</TargetName>
+    <TargetName>Lyan_nskinz-v0.7.6-zh-CN</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -202,6 +202,11 @@
     <ClCompile Include="src\Cs2\Compatibility.cpp" />
     <ClCompile Include="src\Cs2\GlobalResourceSwapper.cpp" />
     <ClCompile Include="src\Cs2\Runtime.cpp" />
+    <ClCompile Include="src\Runtime\LiveHotpatch.cpp" />
+    <ClCompile Include="src\Runtime\LivePresentation.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\game.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\skins.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\util.cpp" />
     <ClCompile Include="src\dllmain.cpp" />
     <ClCompile Include="src\Runtime\GloveAppearance.cpp" />
     <ClCompile Include="src\Runtime\DemoSkinRewrite.cpp" />

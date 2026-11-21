@@ -71,3 +71,7 @@ upstream terms are preserved in:
 The vendored source, including nSkinz's field-materialization, string-table
 insertion and fixed8 entity-codec changes, is distributed in
 [`third_party/source2-demo`](third_party/source2-demo).
+
+## Third-party runtime component
+
+DemoTools2 portions: Copyright (c) 2026 janglijoshi. Original component terms and attribution are retained in [third_party/live_cosmetics/LICENSE](third_party/live_cosmetics/LICENSE) and [third_party/live_cosmetics/NOTICE.md](third_party/live_cosmetics/NOTICE.md). The project owner reports separate author permission. These component terms are not replaced by the project license.

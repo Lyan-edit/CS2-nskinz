@@ -1,4 +1,4 @@
-[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.7.5)](./docs/assets/nskinz-banner.svg?v=0.7.5)
+[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.7.6)](./docs/assets/nskinz-banner.svg?v=0.7.6)
 
 <h3 align="center">面向 HLAE Demo 回放的 Counter-Strike 2 离线外观工具</h3>
 
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.5"><img src="https://img.shields.io/badge/release-v0.7.5-2ea043?style=flat-square" alt="最新正式版"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.6"><img src="https://img.shields.io/badge/release-v0.7.6-2ea043?style=flat-square" alt="最新正式版"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/releases"><img src="https://img.shields.io/github/downloads/Lyan-edit/CS2-nskinz/total?style=flat-square&label=下载量" alt="下载量"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz"><img src="https://img.shields.io/github/stars/Lyan-edit/CS2-nskinz?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/network/members"><img src="https://img.shields.io/github/forks/Lyan-edit/CS2-nskinz?style=flat-square" alt="Forks"></a>
@@ -21,287 +21,74 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-EN.dll"><img src="https://img.shields.io/badge/下载-英文%20DLL-2ea043?style=for-the-badge" alt="下载英文 DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="下载中文 DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.5"><img src="https://img.shields.io/badge/Release-v0.7.5-2ea043?style=for-the-badge" alt="v0.7.5 发布说明"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.6/Lyan_nskinz-v0.7.6-EN.dll"><img src="https://img.shields.io/badge/下载-英文%20DLL-2ea043?style=for-the-badge" alt="下载英文 DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.6/Lyan_nskinz-v0.7.6-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="下载中文 DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.6"><img src="https://img.shields.io/badge/Release-v0.7.6-2ea043?style=for-the-badge" alt="v0.7.6 发布说明"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/issues/new/choose"><img src="https://img.shields.io/badge/提交问题-f85149?style=for-the-badge" alt="提交问题"></a>
 </p>
 
 > **安全提示：** nSkinzCS2 只用于通过 HLAE、带 `-insecure` 启动的离线 Demo 回放。请勿加载到 VAC 保护服务器或任何联机服务器。超出此范围使用造成的账号风险由使用者自行承担。
 
-## v0.7.5 更新
+## v0.7.6 更新
 
-修复配置与版本号读取竞态，复用不可变实时配置，减少窗口被遮挡或最小化时的 CPU 占用。面板显卡设备异常后可通过 Insert 恢复，安全处理窗口缩放。VPK 先检查文件范围再分配内存，限制目录字符串长度；异线程帧回调仅转发游戏原函数。保留工坊换图 manifest 修复、fixed8 Demo 修复、19 项多普勒标签和固定透明雷达。
+刀、默认 T/CT 手套、枪械与五槽贴纸统一热修；挂件使用临时 Demo 重建；恢复创意工坊换图和固定透明雷达。修复历史配置自动套用，每次加载 DLL 后只有本次点击应用的项目才会启用。保留 HUD 名称同步、当前持枪者 XUID 规则和具体枪型位置预览。
 
-完整原生回归、42 项解析器测试、30 项重建器普通测试、12 个真实面板场景和双语独立加载测试通过。本机兼容基线为 **CS2 2000943／1.41.9.7**。游戏内帧时、长期播放及跳转效果仍需实测，微基准不代表游戏帧率提升。详见[发布说明](docs/releases/v0.7.5.md)与[稳定性审查](docs/diagnostics/stability-audit-20261117.md)。
+详见[双语发布说明](docs/releases/v0.7.6.md)。本机离线核验客户端为 **CS2 2000948 / 1.42.0.0**。用户已确认测试版刀、手套和 HUD 正常；本次未启动 CS2/HLAE，自动测试不能代替不同 Demo 的画面与性能验收。
 
+## 当前功能与应用路径
 
-## v0.6.4 更新
-
-- 锁定用户确认的 **Inferno Water 真透明雷达标准**，内嵌 **19 种已复查的纹理版本**。同版本复用同一张图，固定标准不再受黑底容差、道路恢复和资源重扫影响；参考图使用原生 RGBA8888 无损编译。
-- 刀具材质更新后，在受保护的原生 HUD 回调中刷新右侧现有武器图标的完整本地化名称，每份配置／图标只提交一次。
-- 修正五槽贴纸 schema 语义，保留原位模式按玩家、枪型、实体和活动 tick 读取最终临时 Demo 的真实变换；“使用预设位置”明确写入标准起点。
-- 区分“配置名称”与“游戏内名称标签”，汉化全部品质选项并保留其经济物品字段作用。
-- 保持路径分工：刀具模型＋饰面、默认 T／CT 手套与挂件走临时 Demo；刀具仅饰面走当前 Demo 热修。同步新版封面与真实控制面板截图。
-
-退出加载旧 DLL 的进程后，只加载一个 v0.6.4 语言版本。实时改动点击“智能应用”；重建项目从原始录制重新生成。更新雷达后重新加载 Demo。
-
-C++ 全量与雷达回归通过。当前本机验证客户端为 CS2 `2000940`，已核验刀具材质／名称／HUD 入口，其它模块保留原有保护；具体 Demo 的画面仍需实测。本次发布未启动游戏或 HLAE。
-
-详见[双语发布说明](docs/releases/v0.6.4.md)、[Inferno Water 固定标准](docs/diagnostics/inferno-water-radar-standard-20261103.md)与[雷达参考库](assets/radar_references/README.md)。
-
-## 保留的挂件重建功能
-
-- 挂件替换、新增和清除统一走临时 Demo 重建，保留已有位置和 seed；新增起始挂点来自 34 种枪械模型标记的默认区域。
-- 关闭实时挂件写入、工厂创建和挂件专用扫描。空闲及生成 Demo 的工厂回调在复制配置前返回，外置重写进程降低 CPU 优先级。
-- 四份独立录制通过重建、清除和跳转检查：1,317 把目标枪械、506,431 条记录、3,106 个创建快照及 202 次独立跳转读回。挂件画面和实际游戏帧时间改善仍需实机验收。
-- 保留默认 T／CT 手套重建及其它饰品／地图功能，兼容基线延续 CS2 `2000935`／HLAE `2.192.8`。
-
-升级后重启 CS2／HLAE，只加载一个 v0.6.4 DLL；配置挂件后，从原始录制重新生成临时 Demo。只点“更新”不会实时更换挂件。
-
-详见[中英双语发布说明](docs/releases/v0.6.4.md)和[挂件实现与回归记录](docs/development/keychain-temporary-demo-20261026.md)。
-
-## v0.6.1 更新
-
-- 将受保护的刀具、默认手套、枪械材质、动画和资源路径迁移到 CS2 `2000932`／Patch `1.41.9.1`（Steam Build `25947352`）。
-- 今日更新后继续保留五槽位贴纸创建、自定义位置、滑轨、具体枪型预览与节流实时同步。
-- 通过按实体代际缓存分类结果和复用不可变目录 UI 列表，降低帧回调与独立控制面板开销。
-- 重新验证本机完整饰品目录、任意字段数量 Demo 重写、枪皮材质、创意工坊雷达遮罩及 CS2 原生雷达编译。
-- 已验证 HLAE 基线更新到 `2.192.7`／AfxHookSource2 `0.41.7`。
-
-精确兼容证据、验证结果与限制见[中英双语 v0.6.1 发布说明](docs/releases/v0.6.1.md)。
-
-## v0.5.8 更新（上一稳定版）
-
-- “临时换肤 Demo”现在可为源 Demo 中不存在的枪械贴纸槽写入完整 ID／磨损／缩放／旋转属性，并放到武器原生预设位置。
-- 已有贴纸仍只替换图案 ID，完整保留 Demo 的磨损、缩放、旋转和 CS2 自由摆放数据。
-- 贴纸与涂装字段共用防碰撞的 Econ 属性分配器；生成后会二次解析并逐一验证请求槽位，验证通过才进入回放队列。
-- 本版暂不增加自由摆放：不创建或修改 offset X／Y、schema。实时“更新”只处理已有槽位，缺失槽位必须走“临时换肤 Demo”。
-
-精确功能边界、操作方法及验证结果见[中英双语 v0.5.8 发布说明](docs/releases/v0.5.8.md)。
-
-## v0.5.6 更新（上一稳定版）
-
-- 修复当前 CS2 合法 Demo 的 `serialized entity length count mismatch`；writer 将任意稀疏 `serialized_entities` 表动态映射到真正携带字段数据的命令，同时保留全条目及包含 Delete 的布局兼容。
-- 运行时状态、Schema／实体绑定、应用统计、诊断与 Catalog 警告统一放入默认收起的“运行时调试信息”栏。
-- Source 2 writer `41/41`、Demo rewriter `11/11`、中英文构建与 310 MB 真实 Demo 端到端重写／重解析通过。
-
-详见[中英双语 v0.5.6 发布说明](docs/releases/v0.5.6.md)。
-
-## v0.5.4 更新
-
-- 原 Demo 中已经带有网络涂装的枪械继续沿用 v0.4.5 已验证的实时路径；原皮／默认枪械先在生成的临时 Demo 中补齐经济字段，再继续使用同一套实时外观逻辑。
-- 已有网络涂装的手套继续走带保护的实时路径；T/CT 默认手套先在临时 Demo 中重建定义、涂装、种子和磨损字段，再进行第二次回放。
-- 目标刀动画骨骼不再要求存在于源 Demo。重写器会从已安装 CS2 的松散文件或 `pak01_dir.vpk` 验证目标骨骼，再插入标准 `AnimAssetData` 加载记录。
-- 刀实体在 Demo 重载和代际变化时保留模型/动画监听器，并分离武器位置与 HUD 消费者，针对刀模落到手枪位置、手枪检视动作及原皮匕首动作残留进行修正。
-- 原皮 AK-47 现在会解析经过验证的 CS2 2000919 材质生成入口，并且每个实体代际只执行一次引擎原生材质初始化；生成后的材质状态使用稳定缓存，不再逐帧刷新。
-- 枪械、刀和手套均支持名称标签。自定义名称为空时使用 `nSkinz CS2`，填写后则序列化为指定名称。
-- 创意工坊地图模型替换正式纳入发布版：自动识别已安装订阅，第一次加载 Demo 时配置并启用，第二次加载同一 Demo 时替换地图；同时安全抑制可确认属于原地图的生成模型。已烘焙进编译地图且没有安全一一对应关系的几何体仍可能残留。
-- 创意工坊雷达现在会自动识别每张纹理的中性暗底／网格灰阶，清理 Ancient Night 的黑底网格；Inferno Water 恢复的边缘与窄路像素改为继承相邻道路颜色，不再出现不透明黑色残渣。
-- 文件名、控制面板标题和启动日志均标记 `v0.5.4`。本次发布使用 CS2 Steam Build `25588766`、Client/Server `2000919`、Patch `1.41.8.6`、Source revision `11049427`；HLAE `2.192.6`。
-
-地图模型／雷达、刀模、动作与默认载体仍需针对具体 Demo／地图组合进行画面验收。完整回归和隔离加载门禁已通过，但自动测试不能替代这一步。详见[中英双语 v0.5.4 发布说明](docs/releases/v0.5.4.md)。
-
-## v0.4.5 更新（历史版本）
-
-- 修复当前 CS2 中 Schema 能提供 72 字节属性布局、却没有向量修改回调时，原皮枪械无法创建涂装、种子和磨损节点的问题。新路径只在字节级验证通过后调用 CS2 自身的属性追加函数。
-- 删除朋友日志中出现的两次完整实体扫描；通过已验证的 CS2 分块布局直接按索引读取，并在探测实体上界时同步填充缓存。
-- 重复点击“智能应用”时复用已由引擎构造、随后安全清零的尾部节点，不再每次扩张向量。
-- 当前独立刀模链已随源码和运行时进入本版，但明确标记为**实验功能**：刀模、切刀和检视已有进展，首次重建动作、队友发刀/拾取刀及所有 HUD 交接尚未完成验收。
-- 编译输出及双语 ZIP 内文件命名为 `Lyan_nskinz v0.4.5 EN.dll` 和 `Lyan_nskinz v0.4.5 zh-CN.dll`，两者继续使用静态 `/MT` 与内嵌面板着色器。GitHub 会规范化带空格的附件名，因此单独下载的 DLL 使用稳定的连字符别名。
-
-用户提供的 v0.4.4 日志显示枪械请求结束于 `changed_slots=0, verified=0`，同时外观轮询平均约 31 毫秒；v0.4.5 分别修复这两个原因。完整原生回归、当前客户端二进制只读签名检查和隔离加载检查已通过；朋友该 Demo 的画面验收仍需用户复测。详见[中英双语 v0.4.5 发布说明](docs/releases/v0.4.5.md)。
-
-<details>
-<summary>保留的 v0.4.4 修复</summary>
-
-- 修复原皮枪械选择兼容涂装后仍显示无涂装的问题，包括原皮 AWP → 嘣。
-- 通过引擎补齐缺失的涂装、种子和磨损属性，并为材质容器为空的物品执行首次生成；这是普通枪械共用修复，不是 AWP 特判。
-- 重复更新复用已有属性；撤销前校验对象代际；初始化失败后停止当前对象/外观的自动重试，直到手动更新或对象变化。
-- 保留枪型兼容筛选、新旧网格与 HUD 修复、完整目录、独立面板输入法/搜索和单 DLL 加载方案。
-- 原样发布已测试的中英文 DLL，不混入暂停中的独立刀模续作。
-
-用户已确认原皮 AWP → 嘣的 Demo 实测成功。**46 项原生回归**、**9 个定向检查**及隔离加载/渲染检查通过。目录覆盖 **34 枪型 / 1,449 个合法组合**，不代表逐个涂装都完成了画面实测。详见[中英双语 v0.4.4 发布说明](docs/releases/v0.4.4.md)。
-
-</details>
-
-<details>
-<summary>保留的 v0.4.3 修复</summary>
-
-- 按本机涂装元数据选择新旧枪械网格，修复 M4A4 从破浪狂飙换成皇帝仍显示原皮的问题。
-- 修复网络实体缓存之外的第一人称枪身漏查；当前活动枪身应存在但尚未解析时，在任何外观写入之前保持等待状态。
-- 枪械涂装列表按精确枪型兼容关系筛选；运行时和导入配置同样校验。保留完整目录，不兼容选项明确显示“不可用”，不会被偷偷改成原皮。
-- 枪械刷新缓存增加实体身份与创建代际校验；对象未变、收枪或修复被回放覆盖的字段时不重复刷新。
-- 保留独立面板输入法/搜索修复、静态 MSVC `/MT` 与内嵌着色器。独立刀模链保持只读，尚未完成可用的模型替换。
-
-用户已确认本地 Demo 的皇帝修复成功。**45 项原生回归**、**8 个定向检查**、双语构建及隔离加载/渲染检查通过。目录覆盖 **34 枪型 / 1,449 个合法组合**，不代表逐个涂装都完成了画面实测。详见[中英双语 v0.4.3 发布说明](docs/releases/v0.4.3.md)。
-
-</details>
-
-<details>
-<summary>保留的 v0.4.1 修复</summary>
-
-- 修复使用输入法、在皮肤搜索栏输入文字导致 CS2 闪退的问题，包括英文输入触发的崩溃。完整控制面板现运行于 `cs2.exe` 之外，通过系统自带的 `rundll32.exe` 承载，无需额外下载程序。
-- 独立面板保留本机游戏的完整皮肤目录及中文名称，不以缩减涂装选项规避输入问题。
-- 修复枪械动态涂装属性同步和刀材质重复刷新。
-- “仅饰面”隐藏并忽略刀模型选择，只有“饰面＋模型”才显示模型选项。
-- 移除网格更新中的阻塞等待/重试、运行时反复复制完整目录，以及帧回调内同步写日志的开销。
-
-v0.4.1 发布时通过 **42 项原生回归测试**。网格函数 240 次更新的基准从 3714 毫秒降至约 0.1 毫秒；这**不是游戏帧率实测，也不代表所有 Demo 卡顿都已解决**。验证范围和已知限制见[中英双语 v0.4.1 发布说明](docs/releases/v0.4.1.md)。
-
-</details>
-
-## nSkinzCS2 是什么？
-
-nSkinzCS2 是一个 Windows x64 DLL，用于在观看 Counter-Strike 2 Demo 时修改当前观战玩家的外观。它通过 HLAE 的 `mirv_loadlibrary` 加载，读取本机 CS2 目录中的物品目录，并通过 Win32 + D3D11 + Dear ImGui 控制面板，按玩家 XUID 安全地应用外观覆盖。
-
-![nSkinzCS2 控制面板](./docs/assets/control-panel.png?v=0.7.5)
-
-当前真实 UI 渲染，使用示例配置，未连接游戏进程。[截图记录](docs/assets/control-panel.capture.json)。
-
-## 功能矩阵
-
-| 模块 | v0.7.5 支持情况 | 说明 |
+| 模块 | 使用方法 | 应用路径 |
 | --- | --- | --- |
-| 枪械 | 按枪型筛选的涂装、种子、磨损、品质、名称标签及贴纸替换／创建 | 临时 Demo 可更新原皮和已有涂装枪械。已有贴纸保留变换／自由摆放数据；请求的缺失逻辑槽会创建到武器原生预设位置。运行时及导入配置仍会校验兼容性。 |
-| 刀 | 仅饰面实时修改；模型＋饰面通过临时 Demo 重建 | 切到仅饰面保留当前重建刀型，后续饰品重建继续保留模型；切刀、检视等显示仍需按具体 Demo 验收。 |
-| 手套 | T/CT 手套载体、手套模型和涂装 | 已有涂装属性原位覆盖；默认及生成 Demo 的手套在播放前重建，运行时保持只读。 |
-| 临时换肤 Demo | 一键生成并加载包含刀、枪械、手套、贴纸及挂件变更且经过验证的第二个 `.dem` | 由 DLL 内嵌的开源 nSkinz 重写器实现；可为缺失贴纸槽扩展枪械 Econ 属性向量。绝不覆盖原 Demo，输出会在加载前重新解析。 |
-| 创意工坊地图 | 自动识别已安装订阅；在 Demo 第二次加载时替换地图并抑制可安全识别的原地图生成模型 | 已纳入本正式版；不改写 `.dem` 或创意工坊文件。已烘焙几何体在无安全替代时可能残留。 |
-| 挂件 | 临时 Demo 重建替换、新增和清除 | 蓝色标记与 X/Y 滑轨实时预览位置。自动模式保留已有挂点和 seed，新增挂件使用枪模默认挂点。 |
-| 原皮 / 无涂装 | 独立的 `原皮（无涂装）` 选项 | 与 `-（不修改）` 不同；部分 Demo 刀的第一人称旧材质可能残留。 |
-| 语言 | 英文和简体中文 DLL | 中文版从本机 `csgo_schinese.txt` 读取名称。 |
+| 枪械 | 填写当前持枪者 XUID，选择枪型、涂装、种子、磨损和名称，点击该枪械应用 | 当前 Demo 热修 |
+| 刀 | 仅饰面先检测当前刀型并筛选相容涂装；模型＋饰面选择目标刀型，再点刀的应用 | 两种模式都热修 |
+| 手套 | 仅饰面筛选当前手套型号涂装；默认 T/CT 或换型号请选择模型＋饰面，再点手套应用 | 两种模式都热修 |
+| 贴纸 | 五槽分别设置图案及磨损/缩放/旋转/位置；可只应用当前槽或明确应用全部五槽，空槽表示清除 | 热修 |
+| 挂件 | 配置 XUID、枪型、挂件与蓝色预览位置，再点挂件应用；自动挂点保留已有位置，新挂件使用模型默认挂点 | 从原始 Demo 重建临时文件 |
+| 创意工坊地图 | 先在 Steam 订阅并下载地图，扫描后选中可游玩的目标，点地图应用 | 配置重映射后重载当前 Demo；不需要饰品 XUID |
+| HUD | 刀及枪械涂装/型号应用后同步右侧完整物品名称 | 保留原生 HUD 更新链 |
+
+每个应用按钮只提交当前项目。编辑其它项目不会连带提交；保存/加载仅操作编辑器。热修品质采用已集成引擎的自动策略，面板不提供无效的手动品质选项。
 
 ## 快速开始
 
-v0.7.5 已内嵌预编译面板着色器、独立 Demo 重写器、19 种已复查雷达参考图（含锁定的 Inferno Water 标准）并保留 `/MT`。除 Windows 10/11 x64、CS2 和 HLAE 外不需要其它运行库。`LoadLibrary failed` 排查见[单 DLL 加载说明](docs/portable-loading.md)。
-
-1. 使用 HLAE、带 `-insecure` 启动 CS2，然后打开离线 Demo。
-2. 下载一个 Release DLL。发布版使用 MSVC 静态运行库（`/MT`），不需要另装 Visual C++ Redistributable、Python、SDK 或 Visual Studio。
-3. 在 HLAE 中加载 DLL：
+1. 完整退出加载了旧 DLL 的 CS2/HLAE，使用 HLAE、带 `-insecure` 启动并播放离线 Demo。
+2. 从本页下载一个语言的 DLL，放入可写文件夹。在控制台执行（替换为实际路径）：
 
 ```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.7.5-zh-CN.dll"
+mirv_loadlibrary "D:\Lyan_nskinz-v0.7.6-zh-CN.dll"
 ```
 
-英文版：
+3. 按 `Insert` 打开独立面板。填写目标当前持枪者 XUID，选择外观，点击该项的智能应用按钮。
+4. 枪械、刀、手套和贴纸直接热修；挂件首次应用会捕获原始 Demo 路径、生成临时文件并加载。
+5. 贴纸预览中选中槽为黄色，其它已配置槽为白色，共五槽；挂件为蓝色。拖动/滑轨只改变编辑器预览，点击对应应用才更新游戏。
 
-```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.7.5-EN.dll"
-```
+双语 DLL 内嵌着色器、重写器和 19 个雷达参考版本，采用静态 MSVC 运行库，不需要玩家安装 Python、SDK 或 Visual Studio。不要在同一进程叠加正式版、测试版或其它外观修改 DLL。加载问题见[单 DLL 加载说明](docs/portable-loading.md)。
 
-上述示例要求 DLL 位于 D 盘根目录，请改成实际完整路径。ZIP 内 DLL 文件名包含空格，加载时必须使用一对英文半角双引号；不要叠加两对引号或使用中文弯引号。
+## 配置、启动与日志
 
-按 `Insert` 显示面板，选择观战玩家 XUID 和外观配置，点击“智能应用”（`Update`）。请把 DLL 放在可写文件夹，独立面板与运行时需要在此生成和共享目录/配置文件。运行日志为 `nSkinzCS2.log`，面板日志为 `nSkinzCS2.ui.log`。
+- 编辑器配置：`nSkinzCS2.json`。旧正式版配置可继续编辑；测试版 `nSkinzCS2.live-test.json` 可备份后复制为正式名称。
+- 当前进程应用文件：`nSkinzCS2.session-<CS2 PID>.applied.json`。每次加载 DLL 会初始化为空，不会读取历史整份 `.applied.json` 自动启用刀、手套等项目。
+- 关闭/重新打开面板保留本会话已明确应用的项目；回跳、换图或挂件重建后它们继续工作。重新启动后需重新点击各项应用。源 Demo 自带饰品仍属于录制内容。
+- DLL 日志：`nSkinzCS2.log`；独立面板日志：`nSkinzCS2.ui.log`。导入运行时的历史/诊断目录继续使用 `%TEMP%\nSkinzCS2-live-test-0.7.5\`，以保留已知失败模型的兼容记录。
+- 刀、手套和贴纸不会进入临时 Demo 重写计划；临时 Demo 页只重建挂件。原 Demo 不覆盖。换地图按钮不要求 XUID，也不触发饰品重写。
 
-升级时请重启 HLAE/CS2，只加载**一个语言版本**的 DLL；先备份旧配置，不要在旧 DLL 已加载时叠加注入新版。[Windows x64 发布包](https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-CS2-2000943-windows-x64.zip)含中英文 DLL、游戏版本、许可证／声明与加载说明。
+## 创意工坊地图与透明雷达
 
-## 创意工坊地图与模型替换
+扫描只列出可游玩的顶层地图，不把 skybox/prefab 当作独立目标。选择地图并应用后重载同一 Demo。已确认的雷达版本复用内嵌参考图，锁定的 Inferno Water 标准不会被容差或道路恢复控件重新生成。其它地图仍保留透明处理和资源诊断；不同地图烘焙几何体与具体 Demo 组合需要画面验收。
 
-开始前请先订阅并完整下载目标 CS2 创意工坊地图。新增的“地图更换”页会读取 Steam 本地创意工坊清单，只识别顶层 `maps/<地图名>.vpk`，不会把地图内部 prefab 误列为独立地图。
+## 当前原生控制面板
 
-1. 通过 HLAE 第一次加载原 Demo，并加载 nSkinzCS2。
-2. 打开“地图更换”，点击“重新识别已订阅地图”，选择目标地图，勾选“启用 Demo 地图替换”，再点击“使用选中的创意工坊地图”。
-3. “原始 Demo 地图”可留空自动捕获；在第一次加载仍处于活动状态时点击主界面的“更新”。
-4. 确认日志出现 `Map remap ready` 和 `Map remap armed`。
-5. 对同一个 Demo 再执行一次 `playdemo`；地图会在第二次解析／加载过程中替换。
+下面是当前 MainWindow 原生渲染导出的真实截图；没有连接游戏或模拟键盘。五槽贴纸及具体枪型预览均保留。
 
-只有当前 CS2 版本的 protobuf、KeyValues、manifest 与资源回退入口全部验证成功时才会启用；任一点缺失或不唯一都会整体拒绝安装，不留下半套 hook。该实现已通过编译、完整原生回归和本机创意工坊识别检查，但不同地图仍需在游戏画面中逐个验收。
+![nSkinzCS2 v0.7.6 控制面板](./docs/assets/control-panel.png?v=0.7.6)
 
-逐 Hook 对照和有意保留的框架差异见 [MulNX 地图更换对照审计](docs/map-remap-mulnx-audit.md)。
+## 源码、验证与授权
 
-## 临时饰品换肤 Demo
+Release 提供双语 DLL、完整包、对应源码和 SHA-256 校验。验证说明见[发布记录](docs/releases/v0.7.6.md)，历史更新保留在 [CHANGELOG](CHANGELOG.md) 与 [docs/releases](docs/releases)。
 
-当前源码可生成第二个 Demo，让刀的定义、子类／模型和动画数据，以及原皮枪械／默认手套缺失的经济字段，在 CS2 解析新回放前就已存在。目标刀的动画骨骼不会从源 Demo 复制：工具会在当前 CS2 安装目录的 `game/csgo` 松散文件或 `pak01_dir.vpk` 中确认目标 `.vnmskel_c`，再写入让 Source 2 加载该已安装资源的标准 `AnimAssetData` 记录。归属扫描会对每一把枪和每一副手套独立判断：源物品已有网络涂装值时保持不动并交给原实时逻辑；源物品没有涂装时才写入临时 Demo。手套使用“仅饰面”模式时，会保留从源 Demo 解析出的手套定义，不会强制换成默认模型。
+第三方组件的必要许可证和署名见 [NOTICE](NOTICE.md) 与 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
-1. 第一次加载原 Demo，按观战玩家 XUID 配置枪械、刀和手套，然后点击“智能应用”，让运行时捕获当前 Demo 路径。
-2. 打开“临时换肤 Demo”，点击“一键生成并加载临时 Demo”。DLL 内嵌的 nSkinz 工具先扫描归属和源属性，再把完整刀事务、枪械／手套经济字段及请求的贴纸变更写入新 Demo。缺失贴纸槽会在原生预设位置获得完整的 ID／磨损／缩放／旋转记录；已有槽位继续保留原自由摆放数据。
-3. 成功后 nSkinzCS2 会自动排队执行 `playdemo`；日志会分别报告实际重写的枪械、刀、手套，以及替换／创建的贴纸槽数量。
-4. 新文件保存在 `game/csgo/nskinz_temp/`，文件名前缀为 `nskinz_skin_`；原 Demo 保持不变。“再次加载已生成 Demo”只重播成品，不会重复改写。
-
-刀具模式分流：“模型＋饰面”仅通过临时 Demo 重建；“仅饰面”点击智能应用后在当前 Demo 中热修贴图，保留当前刀型，生成的 Demo 也可使用。详见[模式分流与热修恢复记录](docs/development/knife-mode-routing-live-finish-20261028.md)。枪械和手套配置保留按载体分流：已有涂装的源物品走原实时逻辑，重建枪械执行一次原生材质初始化，而完整序列化的重建手套在字段与请求完全匹配时直接认定完成，不再追加第二次实时写入或 HUD 刷新。多个 XUID 会在归属扫描中分别解析。实现边界和失败行为见[开发说明](docs/development/temporary-demo-skin-rewrite-20260922.md)。
-
-## 兼容基线
-
-以下为当前本机验证客户端，刀具材质／名称／HUD 入口已经核验，其它模块保留原有保护，不宣称新版所有原生地址已逐项重新认证。临时 Demo 可重写原皮和已有涂装的枪械／手套，创建缺失贴纸槽并补齐现代位置字段；地图模型／雷达、刀模、动作和外观效果仍需按 Demo 画面验收。
-
-- Steam app build ID `26445667`
-- CS2 Client/Server `2000942`、Patch `1.41.9.6`、Source revision `11206718`（2026-11-04 16:01:59）
-- `client.dll` SHA-256：`9279421852772522121BE2F13409DD37436E8C809FF48898C8C3D41B09E77844`
-- `animationsystem.dll` SHA-256：`CBE069AEAEFDD5F93D969985562AF8D04991A478DBDA58E8A2914CBEAC2BEA47`
-- HLAE `2.192.8`；AfxHookSource2 `0.41.8`，SHA-256：`25FE441B65F1C439668F180C494DFF7302C65D9663CC55DF01FC2FBC6E5E89AA`
-- `Source2Client002`、`ResourceSystem013`、`VFileSystem017`
-
-CS2 更新可能改变内存布局。DLL 会记录检测到的版本，并在签名缺失或匹配不唯一时拒绝不确定的写入。
-
-<details>
-<summary><strong>从源码构建</strong></summary>
-
-要求：Windows 10/11 x64、Visual Studio 2022 + MSVC v143、Windows SDK 10、Direct3D 11 开发库，以及用于目录检查的本地 CS2 安装。
-
-```text
-打开 nSkinzCS2.sln
-选择 Release | x64       # 英文版
-选择 ReleaseZhCn | x64   # 简体中文版
-生成解决方案
-```
-
-输出文件为 `build/Release/Lyan_nskinz v0.7.5 EN.dll`、`build/Release/Lyan_nskinz v0.7.5 zh-CN.dll` 和 `build/Release/nSkinzCS2.Tests.exe`。`run-build-and-tests.cmd` 会构建并运行原生回归测试，`run-tests.cmd` 只运行现有测试程序。
-
-</details>
-
-<details>
-<summary><strong>仓库结构与架构</strong></summary>
-
-| 路径 | 作用 |
-| --- | --- |
-| `src/` | 启动、配置、目录解析、运行时、外观辅助逻辑和 ImGui 界面 |
-| `tools/` | DIA/RVA 与资源查询辅助程序 |
-| `third_party/` | Dear ImGui、MinHook、nlohmann/json 源码 |
-| `nSkinzCS2.sln` | DLL 与原生测试项目的 Visual Studio 解决方案 |
-| `run-build-and-tests.cmd` | 构建和测试脚本 |
-
-`AppState` 连接启动、UI 和运行时线程；`WeaponAppearance`、`KnifeAppearance`、`GloveAppearance` 将配置决策拆成可在游戏进程外测试的辅助模块；运行时层会先校验接口、签名和实体绑定。
-
-</details>
-
-## 已知限制与路线图
-
-- 刀模替换及部分动画/HUD 交接仍属实验功能，尤其是实体重建后首次切刀、队友发刀或拾取刀。
-- 创意工坊地图更换依赖当前 CS2 二进制签名及目标地图资源；游戏更新或订阅下载不完整会使功能停用或加载失败，画面效果仍需逐地图验收。
-- 如果 Demo 中的刀已经拥有编译后的自定义材质，选择 `原皮（无涂装）` 后第一人称视角仍可能显示旧材质。正数刀涂装已验证；该旧材质清理问题不在 v0.4.5 的已修复声明内。
-- 当前优先读取已安装的 CS2 游戏数据，尚未完全改为实时物品 Schema 遍历。
-
-后续计划包括：完善原皮材质清理、扩大刀模/动画覆盖、验收新增挂件的游戏内显示，以及跟随 CS2 更新维护兼容性。挂件仅临时 Demo 路径、模型默认区域和验证边界见[挂件实现记录](docs/development/keychain-temporary-demo-20261026.md)。
-
-## 常见问题
-
-**修复输入崩溃是否禁用了中文，或减少了皮肤？** 没有。完整面板与 CS2 的输入/文字服务路径隔离，并读取导出的本机游戏目录，仍支持中文输入法和英文搜索。如目录异常变少，请反馈两份日志及目录文件的生成状态。
-
-**为什么单把枪的涂装选项变少了？** v0.4.5 只显示与该枪型兼容的涂装，完整本机目录仍保留。兼容数据缺失时拒绝应用；旧配置中的错误组合会标为不可用，不会悄悄变成原皮。
-
-**Demo 仍然卡顿怎么办？** v0.4.1 移除了已确认的阻塞操作，但不保证所有 Demo 都无卡顿。请保留 CS2 运行现场，反馈日志里的 `Runtime performance` 行，以区分游戏回调、外观轮询、网格更新和材质生成的耗时。
-
-**为什么 `-` 不会清除涂装？** `-（不修改）` 的含义就是保持当前值不变。需要明确去除涂装时请选择 `原皮（无涂装）`。
-
-**修改后没有变化。** 请先加载 Demo，确认观战玩家 XUID 和基础物品正确，再点击 `Update`；同时查看 `nSkinzCS2.log` 中的绑定或兼容性错误。
-
-**为什么刀上仍有旧材质？** 部分 Demo 物品带有编译后的第一人称材质，当前 v0.4.5 原皮路径无法保证全部清除，详见上面的已知限制。
-
-**应该下载哪个 DLL？** 单独下载时，英文界面使用 `Lyan_nskinz-v0.7.5-EN.dll`，中文界面和中文目录名称使用 `Lyan_nskinz-v0.7.5-zh-CN.dll`；双语 ZIP 内保留带空格编译文件名。两者兼容同一套 CS2 基线。
-
-**仓库能打开，但图片显示破图标怎么办？** 某些网络无法访问 GitHub 的 raw 图片域名。本 README 已使用 GitHub 推荐的相对图片路径；如果仍然加载失败，可临时用管理员身份打开记事本，编辑 `C:\Windows\System32\drivers\etc\hosts`，追加：
-
-```text
-199.232.68.133 raw.githubusercontent.com
-199.232.68.133 githubusercontent.com
-```
-
-然后运行 `ipconfig /flushdns`，重启浏览器并刷新页面。网络恢复后可删除这两行；如果仓库本身在无痕窗口也返回 `404`，hosts 不能修复账号级公开可见性，需要联系 GitHub Support。
-
-## 贡献与支持
-
-提交 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请参考 [SECURITY.md](SECURITY.md)。反馈问题时请附上准确的 CS2 Build ID、HLAE 版本、DLL 语言、复现步骤和经过脱敏的日志片段。
+问题反馈请包含准确的 DLL 版本、CS2/HLAE 版本、所用模式、复现步骤及脱敏日志。
 
 <a name="support"></a>
 ## ❤️ 支持项目
@@ -311,13 +98,3 @@ CS2 更新可能改变内存布局。DLL 会记录检测到的版本，并在签
 | **微信支付** | **支付宝** |
 | :---: | :---: |
 | ![微信支付收款码](./docs/assets/sponsor/wechat-pay.png) | ![支付宝收款码](./docs/assets/sponsor/alipay.png) |
-
-## 致谢与授权说明
-
-nSkinzCS2 v0.7.5 以 [`AGPL-3.0-only`](LICENSE) 发布。地图更换实现移植并核对自 [MulNX_CS2](https://github.com/Co1Swet/MulNX_CS2) 提交 `361008b208326d9e7916ff2cd58dd57a0492c400`，并从 `f2466e18e26a8fc3daf4ac7945bc45220ba95993` 同步当前 CS2 的 GameSession 兼容变更；本项目不使用 MulNX 文件改写器。发布附件同时提供 DLL 对应的完整源码。再分发或修改时必须保留 [`NOTICE.md`](NOTICE.md)、AGPL 许可证、源码提供义务和 `third_party/` 内各组件声明。
-
-临时换肤 Demo 由 nSkinz 自有代码和随源码提供的开源 `source2-demo` 解析／写入器实现。其 MIT／Apache-2.0 声明和源码位于 `third_party/source2-demo`，并记录在 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
-
-<p align="center"><a href="https://star-history.com/#Lyan-edit/CS2-nskinz&Date"><img src="https://api.star-history.com/svg?repos=Lyan-edit/CS2-nskinz&type=Date" alt="Star History" width="760"></a></p>
-
-<p align="center"><sub>为可复现的 CS2 离线 Demo 回放而构建。请保持离线并安全使用。</sub></p>

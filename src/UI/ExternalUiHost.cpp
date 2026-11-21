@@ -1,3 +1,4 @@
+#include "Core/BuildConfig.hpp"
 #include "UI/ExternalUiHost.hpp"
 
 #include "Core/Config.hpp"
@@ -371,7 +372,10 @@ bool nskinzcs2::ui::PublishExternalConfigUpdate(
     const auto event = OpenEventW(EVENT_MODIFY_STATE, FALSE, RuntimeEventName(runtime_process_id).c_str());
     if (event == nullptr) return false;
     if (prepare_map) PrepareExternalRadarOverlay(runtime_process_id, document.map_remap);
-    if (!ConfigStore::SaveApplied(config_path, document))
+    const bool saved = build::kLiveHotpatchTest
+        ? ConfigStore::SaveRuntimeApplied(config_path,runtime_process_id,document)
+        : ConfigStore::SaveApplied(config_path,document);
+    if (!saved)
     {
         CloseHandle(event);
         return false;
@@ -489,7 +493,7 @@ extern "C" __declspec(dllexport) void CALLBACK nSkinzUiHost(
         nskinzcs2::Logger::Warn(
             L"Catalog snapshot could not be loaded; the control panel is using the small fallback catalog.");
     }
-    state.ReplaceConfig(nskinzcs2::ConfigStore::Load(base_directory / L"nSkinzCS2.json"));
+    state.ReplaceConfig(nskinzcs2::ConfigStore::Load(base_directory / nskinzcs2::build::kConfigFileName));
 
     nskinzcs2::runtime::Status status;
     status.availability = nskinzcs2::runtime::Availability::Ready;

@@ -163,6 +163,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (arguments.find(L"--knife-finish") != std::wstring_view::npos) finish_capture = 1;
     if (arguments.find(L"--glove-finish") != std::wstring_view::npos) finish_capture = 2;
     if (arguments.find(L"--unknown-model") != std::wstring_view::npos) finish_capture = 3;
+    const bool live_knife_model = arguments.find(L"--live-knife-model") != std::wstring_view::npos;
+    const bool live_default_glove = arguments.find(L"--live-default-glove") != std::wstring_view::npos;
+    if(live_knife_model) finish_capture=1;
+    if(live_default_glove) finish_capture=2;
     const bool gamma_finish = arguments.find(L"--gamma-finish") != std::wstring_view::npos;
     if (gamma_finish) finish_capture = 1;
     if (arguments.find(L"--fail-construction-once") != std::wstring_view::npos) fault_phase = "construction";
@@ -174,7 +178,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (length == 0 || length >= image.size()) return 1;
     image.resize(length);
     const auto directory = std::filesystem::path(image).parent_path();
-    capture_path = directory / (gamma_finish ? L"gamma-finish.png" : finish_capture == 1 ? L"knife-finish.png" :
+    capture_path = directory / (live_knife_model ? L"live-knife-model.png" : live_default_glove ? L"live-default-glove.png" : gamma_finish ? L"gamma-finish.png" : finish_capture == 1 ? L"knife-finish.png" :
         finish_capture == 2 ? L"glove-finish.png" : finish_capture == 3 ? L"unknown-model.png" :
         missing_xuid_capture ? L"missing-xuid-notice.png" :
         keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
@@ -188,10 +192,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     config.profiles[0].paint_kit = 44;
     config.profiles[0].wear = 0.02f;
     for (auto& sticker : config.profiles[0].stickers) sticker.kit_id = 76;
-    if (documentation_capture) config.profiles[0].stickers[0].custom_position = true;
+    if (documentation_capture) { config.profiles[0].stickers[0].custom_position = true;config.profiles[0].enabled=true;config.profiles[0].xuid=123; }
     if (keychain_capture)
     {
         auto& profile = config.keychain_profiles[0];
+        profile.enabled=true;profile.xuid=123;
         profile.name = "AK-47";
         profile.keychain_kit = 17;
         profile.custom_position = true;
@@ -206,10 +211,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
         glove.enabled = true; glove.xuid = 123; glove.paint_kit = 10018;
         if (finish_capture != 3) state.ReplaceGloveApplyCarriers({{123, {5030, false, 515}}});
     }
+    if(live_knife_model) { config.knife_profiles[0].mode=nskinzcs2::model::KnifeProfileMode::ModelAndFinish; config.knife_profiles[0].model_definition=515; config.knife_profiles[0].paint_kit=0; config.knife_profiles[0].explicit_vanilla_finish=true; }
+    if(live_default_glove) { config.glove_profiles[0].mode=nskinzcs2::model::GloveProfileMode::ModelAndFinish; config.glove_profiles[0].model_definition=5030; state.ReplaceGloveApplyCarriers({{123,{5029,false,42}}}); }
     state.ReplaceConfig(config);
     nskinzcs2::runtime::Status status;
     status.availability = nskinzcs2::runtime::Availability::Ready;
-    status.detail = L"Control-panel preview; no game process is connected.";
+    status.detail = live_default_glove ? L"Glove not applied: Requested glove 5030 is absent from Demo (demo 14192, game 14198)." : L"Control-panel preview; no game process is connected.";
     state.UpdateStatus(status);
     nskinzcs2::MainWindow window(state);
     window.Start(true);

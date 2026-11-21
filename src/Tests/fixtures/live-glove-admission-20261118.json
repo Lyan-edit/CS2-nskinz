@@ -1,0 +1,14 @@
+{
+  "origin": "Anonymized local 2026-11-18 runtime log and routing snapshot",
+  "demo_version": 14192,
+  "game_version": 14198,
+  "automatic_versions_back": 5,
+  "current_glove_definition": 5031,
+  "requested_glove_definition": 5030,
+  "requested_glove_paint": 10045,
+  "glove_definitions_observed": [5028, 5029, 5031, 5034, 5035, 4725],
+  "requested_knife_definition": 508,
+  "requested_knife_present_in_demo": true,
+  "glove_write_branch_observed": false,
+  "failure": "Unseen glove model refused by imported LocalAnimAllowed policy before ApplyGloves"
+}

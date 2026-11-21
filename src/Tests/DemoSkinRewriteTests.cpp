@@ -1,3 +1,4 @@
+#include "Core/BuildConfig.hpp"
 #include "Runtime/DemoSkinRewrite.hpp"
 #include "Core/SmartApply.hpp"
 #include "Core/Config.hpp"
@@ -36,9 +37,12 @@ std::map<int, json> IndexItems(const nskinzcs2::runtime::DemoSkinRewritePass& pa
 }
 }
 
+void RunLiveHotpatchTests();
+
 void RunDemoSkinRewriteTests()
 {
     using namespace nskinzcs2;
+    if constexpr(build::kLiveHotpatchTest) { RunLiveHotpatchTests(); return; }
 
     // Independent application must merge only the clicked component, even
     // when every other editor module contains pending or invalid changes.

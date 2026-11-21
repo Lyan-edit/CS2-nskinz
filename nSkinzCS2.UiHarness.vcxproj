@@ -200,6 +200,11 @@
     <ClCompile Include="src\Cs2\Compatibility.cpp" />
     <ClCompile Include="src\Cs2\GlobalResourceSwapper.cpp" />
     <ClCompile Include="src\Cs2\Runtime.cpp" />
+    <ClCompile Include="src\Runtime\LiveHotpatch.cpp" />
+    <ClCompile Include="src\Runtime\LivePresentation.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\game.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\skins.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\util.cpp" />
     <ClCompile Include="src\Runtime\GloveAppearance.cpp" />
     <ClCompile Include="src\Runtime\DemoSkinRewrite.cpp" />
     <ClCompile Include="src\Runtime\GloveVisualRefresh.cpp" />

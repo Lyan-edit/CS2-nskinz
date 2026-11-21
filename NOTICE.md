@@ -29,3 +29,7 @@ Dear ImGui, MinHook, and nlohmann/json retain their own notices and license term
 ## CS2 firearm preview silhouettes
 
 The compact firearm-preview geometry in `src/UI/WeaponPreviewGeometry.generated.hpp` is generated from the Panorama equipment icon resources in a locally installed copy of Counter-Strike 2. The generator is `tools/generate_weapon_preview_geometry.py`; no network download or third-party icon repository is used. Counter-Strike, CS2, the firearm icon designs, and related marks/assets remain the property of Valve Corporation. The generated silhouettes are used only as an offline relative placement guide; nSkinzCS2 is not affiliated with or endorsed by Valve.
+
+## Third-party runtime component
+
+DemoTools2 portions: Copyright (c) 2026 janglijoshi. Original component terms and attribution are retained in [third_party/live_cosmetics/LICENSE](third_party/live_cosmetics/LICENSE) and [third_party/live_cosmetics/NOTICE.md](third_party/live_cosmetics/NOTICE.md). The project owner reports separate author permission. These component terms are not replaced by the project license.

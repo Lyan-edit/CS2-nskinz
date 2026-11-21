@@ -1,3 +1,4 @@
+#include "Core/BuildConfig.hpp"
 #include "Runtime/DemoSkinRewrite.hpp"
 #include "Runtime/GloveAppearance.hpp"
 
@@ -940,12 +941,23 @@ bool nskinzcs2::runtime::IsGeneratedDemoRewrittenGloveProfile(
         g_cached_generated_manifest->rewritten_gloves.contains(xuid);
 }
 
+nskinzcs2::model::ConfigDocument nskinzcs2::runtime::SelectTemporaryDemoCosmetics(const model::ConfigDocument& config)
+{
+    if constexpr(build::kLiveHotpatchTest) {
+        model::ConfigDocument selected;
+        selected.keychain_profiles = config.keychain_profiles;
+        return selected;
+    }
+    return config;
+}
+
 DemoSkinRewritePlan nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(
-    const ConfigDocument& config,
+    const ConfigDocument& requested_config,
     const model::Catalog* catalog,
     const bool smart_routes)
 {
     std::map<std::uint64_t, DemoSkinRewritePass> grouped;
+    const auto config = SelectTemporaryDemoCosmetics(requested_config);
     DemoSkinRewritePlan result;
 
     for (const auto& profile : config.profiles)
@@ -1164,12 +1176,13 @@ bool nskinzcs2::runtime::HasEnabledCosmeticXuid(const ConfigDocument& config) no
 }
 
 DemoSkinRewriteResult nskinzcs2::runtime::GenerateTemporarySkinnedDemo(
-    const ConfigDocument& config,
+    const ConfigDocument& requested_config,
     const model::Catalog* catalog,
     const std::filesystem::path& captured_source_demo,
     const DWORD cs2_process_id,
     const bool smart_routes)
 {
+    const auto config = SelectTemporaryDemoCosmetics(requested_config);
     DemoSkinRewriteResult result;
     if (!HasEnabledCosmeticXuid(config))
     {

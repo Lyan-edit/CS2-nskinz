@@ -1,3 +1,4 @@
+#include "Core/BuildConfig.hpp"
 #include "Core/Config.hpp"
 #include "Core/Log.hpp"
 #include "Core/SmartApply.hpp"
@@ -297,6 +298,7 @@ static void to_json(json& j, const StickerProfile& value)
         {"custom_position", value.custom_position},
         {"offset_x", NormalizeStickerOffset(value.offset_x)},
         {"offset_y", NormalizeStickerOffset(value.offset_y)},
+        {"live_slot_override", value.live_slot_override},
     };
 }
 
@@ -309,6 +311,7 @@ static void from_json(const json& j, StickerProfile& value)
     value.custom_position = j.value("custom_position", false);
     value.offset_x = NormalizeStickerOffset(j.value("offset_x", 0.0f));
     value.offset_y = NormalizeStickerOffset(j.value("offset_y", 0.0f));
+    value.live_slot_override = j.value("live_slot_override", false);
 }
 
 static void to_json(json& j, const CosmeticProfile& value)
@@ -375,6 +378,7 @@ static void to_json(json& j, const KnifeProfile& value)
         {"paint_kit", value.paint_kit},
         {"explicit_vanilla_finish", value.explicit_vanilla_finish},
         {"quality", value.quality},
+        {"live_test_old_demo_model_choice", value.live_test_allow_old_demo_models},
         {"seed", NormalizeCosmeticSeed(value.seed)},
         {"stat_trak", value.stat_trak},
         {"wear", value.wear},
@@ -392,6 +396,7 @@ static void from_json(const json& j, KnifeProfile& value)
     value.paint_kit = j.value("paint_kit", 0);
     value.explicit_vanilla_finish = j.value("explicit_vanilla_finish", false);
     value.quality = j.value("quality", 0);
+    value.live_test_allow_old_demo_models = j.value("live_test_old_demo_model_choice", true);
     value.seed = NormalizeCosmeticSeed(j.value("seed", 0));
     value.stat_trak = j.value("stat_trak", 0);
     value.wear = j.value("wear", 0.0000001f);
@@ -409,6 +414,7 @@ static void to_json(json& j, const GloveProfile& value)
         {"paint_kit", value.paint_kit},
         {"explicit_vanilla_finish", value.explicit_vanilla_finish},
         {"quality", value.quality},
+        {"live_test_old_demo_model_choice", value.live_test_allow_old_demo_models},
         {"seed", NormalizeCosmeticSeed(value.seed)},
         {"wear", NormalizeCosmeticWear(value.wear)},
         {"custom_name", value.custom_name},
@@ -425,6 +431,7 @@ static void from_json(const json& j, GloveProfile& value)
     value.paint_kit = j.value("paint_kit", 0);
     value.explicit_vanilla_finish = j.value("explicit_vanilla_finish", false);
     value.quality = j.value("quality", 0);
+    value.live_test_allow_old_demo_models = j.value("live_test_old_demo_model_choice", true);
     value.seed = NormalizeCosmeticSeed(j.value("seed", 0));
     value.wear = NormalizeCosmeticWear(j.value("wear", kMinimumCosmeticWear));
     value.custom_name = j.value("custom_name", std::string());
@@ -657,6 +664,26 @@ bool nskinzcs2::ConfigStore::SaveApplied(const std::filesystem::path& editor_pat
     return MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
 }
 
+namespace {
+std::filesystem::path SessionEditorPath(const std::filesystem::path& editor_path, std::uint32_t process_id)
+{
+    return editor_path.parent_path() / (editor_path.stem().wstring() + L".session-" + std::to_wstring(process_id) + L".json");
+}
+}
+bool nskinzcs2::ConfigStore::BeginRuntimeSession(const std::filesystem::path& path, std::uint32_t pid)
+{
+    return SaveRuntimeApplied(path, pid, {});
+}
+nskinzcs2::model::ConfigDocument nskinzcs2::ConfigStore::LoadRuntimeApplied(const std::filesystem::path& path, std::uint32_t pid)
+{
+    return pid ? LoadApplied(SessionEditorPath(path,pid)) : model::ConfigDocument{};
+}
+bool nskinzcs2::ConfigStore::SaveRuntimeApplied(const std::filesystem::path& path, std::uint32_t pid,
+    const model::ConfigDocument& document)
+{
+    return pid && SaveApplied(SessionEditorPath(path,pid),document);
+}
+
 nskinzcs2::model::CosmeticProfile* nskinzcs2::ConfigStore::FindMatchingProfile(
     model::ConfigDocument& document,
     const std::uint64_t xuid,
@@ -828,8 +855,8 @@ SmartApplyGroups CollectSmartApplyGroups(
         if (profile.paint_kit > 0 || profile.explicit_vanilla_finish)
             groups.live[key] = value;
         if (std::any_of(profile.stickers.begin(), profile.stickers.end(),
-            [](const auto& sticker) { return sticker.kit_id > 0; }))
-            groups.rebuild[key + "/stickers"] = profile.stickers;
+            [](const auto& sticker) { return sticker.kit_id > 0 || (build::kLiveHotpatchTest && sticker.live_slot_override); }))
+            (build::kLiveHotpatchTest ? groups.live : groups.rebuild)[key + "/stickers"] = profile.stickers;
     }
     for (const auto& profile : config.knife_profiles)
     {
@@ -837,13 +864,13 @@ SmartApplyGroups CollectSmartApplyGroups(
         json value = profile;
         value.erase("name");
         const auto key = "knife/" + std::to_string(profile.xuid);
-        if (profile.mode == model::KnifeProfileMode::FinishOnly)
+        if (profile.mode == model::KnifeProfileMode::FinishOnly || build::kLiveHotpatchTest)
         {
-            value.erase("model_definition");
+            if(profile.mode == model::KnifeProfileMode::FinishOnly)value.erase("model_definition");
             groups.live[key] = value;
         }
     }
-    for (const auto& profile : reconstructed_knives)
+    if constexpr(!build::kLiveHotpatchTest) for (const auto& profile : reconstructed_knives)
     {
         json value = profile;
         value.erase("name");
@@ -854,9 +881,9 @@ SmartApplyGroups CollectSmartApplyGroups(
         if (!profile.enabled || profile.xuid == 0) continue;
         const auto carrier = gloves.find(profile.xuid);
         const bool unknown = carrier == gloves.end() || carrier->second.definition == 0;
-        const bool rebuild = profile.mode == model::GloveProfileMode::ModelAndFinish ||
+        const bool rebuild = !build::kLiveHotpatchTest && (profile.mode == model::GloveProfileMode::ModelAndFinish ||
             profile.explicit_vanilla_finish || unknown ||
-            carrier->second.reconstructed || carrier->second.definition == 5028 || carrier->second.definition == 5029;
+            carrier->second.reconstructed || carrier->second.definition == 5028 || carrier->second.definition == 5029);
         json value = profile;
         value.erase("name");
         if (profile.mode == model::GloveProfileMode::FinishOnly) value.erase("model_definition");
@@ -864,7 +891,7 @@ SmartApplyGroups CollectSmartApplyGroups(
         (rebuild ? groups.rebuild : groups.live)[key] = value;
         if (output)
         {
-            output->unknown_glove |= unknown;
+            output->unknown_glove |= unknown && !build::kLiveHotpatchTest;
             if (!rebuild)
                 std::erase_if(output->rewrite_config.glove_profiles,
                     [&](const auto& candidate) { return candidate.xuid == profile.xuid; });
@@ -915,6 +942,11 @@ nskinzcs2::SmartApplyPlan nskinzcs2::BuildSmartApplyPlan(
         old_map.erase(field);
     }
     result.reload_map = (current.map_remap.enabled || (previous && previous->map_remap.enabled)) && map != old_map;
+    if constexpr(build::kLiveHotpatchTest) {
+        result.rewrite_config = {};
+        result.rewrite_config.keychain_profiles = current.keychain_profiles;
+        result.reconstructed_knives.clear();
+    }
     return result;
 }
 
@@ -969,7 +1001,7 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
     auto& merged = result.apply_config;
     const auto fail = [&](const ScopedApplyIssue issue) { result.issue = issue; return result; };
     const auto has_stickers = [](const auto& profile)
-    { return std::any_of(profile.stickers.begin(), profile.stickers.end(), [](const auto& s) { return s.kit_id > 0; }); };
+    { return std::any_of(profile.stickers.begin(), profile.stickers.end(), [](const auto& s) { return s.kit_id > 0 || (build::kLiveHotpatchTest && s.live_slot_override); }); };
     const auto replace = [](auto& profiles, const auto& selected, auto matches)
     {
         std::erase_if(profiles, matches);
@@ -1005,8 +1037,10 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
         else
         {
             for (std::size_t slot = 0; slot < value.stickers.size(); ++slot)
-                if (target.sticker_slot < 0 || target.sticker_slot == static_cast<int>(slot))
+                if (target.sticker_slot < 0 || target.sticker_slot == static_cast<int>(slot)) {
                     value.stickers[slot] = selected.enabled ? selected.stickers[slot] : model::StickerProfile {};
+                    if constexpr (build::kLiveHotpatchTest) value.stickers[slot].live_slot_override = selected.enabled;
+                }
             value.enabled = value.enabled || has_stickers(value);
             rebuild = true;
         }
@@ -1088,5 +1122,15 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
     result.rebuild_changes = rebuild ? 1 : 0;
     result.reload_map = target.scope == ApplyScope::Map;
     result.unknown_glove = false;
+    if constexpr (build::kLiveHotpatchTest) {
+        result.rewrite_config = {};
+        // Rebuild only already-applied charms from the original recording.
+        // Live knife/glove/sticker settings must never enter a rewrite job.
+        result.rewrite_config.keychain_profiles = merged.keychain_profiles;
+        result.reconstructed_knives.clear();
+        result.live_changes = target.scope != ApplyScope::Keychain && target.scope != ApplyScope::Map ? 1 : 0;
+        result.rebuild_changes = target.scope == ApplyScope::Keychain ? 1 : 0;
+        result.reload_map = target.scope == ApplyScope::Map;
+    }
     return result;
 }

@@ -18,6 +18,17 @@ SIGNATURES = (
     bytes((112, 111, 108, 121, 102, 111, 114, 109, 32, 110, 111, 110, 99, 111, 109, 109, 101, 114, 99, 105, 97, 108)),
 )
 
+# Component identifiers belong only in the required attribution documents.
+ATTRIBUTED_SIGNATURE = bytes((100, 101, 109, 111, 116, 111, 111, 108, 115))
+ATTRIBUTION_FILES = frozenset((
+    "NOTICE.md", "THIRD_PARTY_NOTICES.md",
+    "third_party/live_cosmetics/LICENSE", "third_party/live_cosmetics/NOTICE.md",
+))
+
+
+def attributed_identifier(data: bytes) -> bool:
+    return ATTRIBUTED_SIGNATURE in data.lower().replace(b"\0", b"")
+
 
 def git_bytes(*args: str) -> bytes:
     return subprocess.check_output(("git", *args), cwd=ROOT)
@@ -41,13 +52,18 @@ def verify_paths(paths: list[Path]) -> list[str]:
     failures: list[str] = []
     for path in paths:
         relative = path.relative_to(ROOT).as_posix()
+        if attributed_identifier(relative.encode("utf-8", errors="surrogateescape")):
+            failures.append(f"component identifier in path: {relative}")
         signature = blocked_signature(relative.encode("utf-8", errors="surrogateescape"))
         if signature is not None:
             failures.append(f"path signature {signature}: {relative}")
             continue
         if not path.is_file():
             continue
-        signature = blocked_signature(path.read_bytes())
+        content = path.read_bytes()
+        if relative not in ATTRIBUTION_FILES and attributed_identifier(content):
+            failures.append(f"component identifier outside attribution: {relative}")
+        signature = blocked_signature(content)
         if signature is not None:
             failures.append(f"content signature {signature}: {relative}")
     return failures
@@ -66,6 +82,8 @@ def verify_commit_messages(revision_range: str | None) -> list[str]:
         signature = blocked_signature(records[index + 1])
         if signature is not None:
             failures.append(f"commit-message signature {signature}: {commit}")
+        if attributed_identifier(records[index + 1]):
+            failures.append(f"component identifier in commit message: {commit}")
     return failures
 
 

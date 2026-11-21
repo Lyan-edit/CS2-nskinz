@@ -1,4 +1,5 @@
 #include "Core/Config.hpp"
+#include "Core/BuildConfig.hpp"
 #include "Core/Log.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Cs2/CatalogStore.hpp"
@@ -40,6 +41,7 @@ void RunKnifeGraphTests();
 void RunKnifePairTests();
 void RunDemoSkinRewriteTests();
 void RunStabilityTests();
+void RunLiveHotpatchTests();
 
 namespace
 {
@@ -55,6 +57,7 @@ bool g_glove_refresh_only = false;
 bool g_logging_only = false;
 bool g_map_remap_only = false;
 bool g_stability_only = false;
+bool g_live_hotpatch_only = false;
 
 void WriteRadarPreviewIfRequested(
     const std::string_view name,
@@ -2131,7 +2134,9 @@ void TestSavedRadarReferences()
             auto steamapps = map.item_directory;
             for (int level = 0; level < 4; ++level) steamapps = steamapps.parent_path();
             const auto game = steamapps / L"common/Counter-Strike Global Offensive";
-            Expect(CompileRadarOverlayWithCs2(game, normal, diagnostic), "the locked Inferno PNG must compile natively");
+            const bool compiled = CompileRadarOverlayWithCs2(game, normal, diagnostic);
+            if(!compiled)std::wcerr << L"Radar native compiler diagnostic: " << diagnostic << L'\n';
+            Expect(compiled, "the locked Inferno PNG must compile natively");
             if (const auto* root = std::getenv("NSKINZ_RADAR_PREVIEW_DIR"))
             {
                 std::ofstream native(std::filesystem::path(root) / "inferno-water-approved.vtex_c", std::ios::binary);
@@ -3210,11 +3215,15 @@ void TestModernGloveCatalog()
     glove.model_definition = 5030; glove.paint_kit = 1417;
     config.glove_profiles.push_back(glove);
     const auto plan = nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog);
-    Expect(plan.validation_issue.empty() && plan.glove_item_count == 2,
-        "low-ID Occult must generate both default T and CT glove rewrite requests");
+    Expect(plan.validation_issue.empty() && plan.glove_item_count ==
+        (nskinzcs2::build::kLiveHotpatchTest ? 0 : 2),
+        "modern gloves must follow the active live or legacy reconstruction route");
     config.glove_profiles[0].model_definition = 5031;
-    Expect(!nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog).validation_issue.empty(),
-        "a low-ID sport finish cannot be requested on driver gloves");
+    Expect(catalog->glove_paint_compatibility.at(1417) != 5031,
+        "a low-ID sport finish cannot be offered for driver gloves");
+    if constexpr (!nskinzcs2::build::kLiveHotpatchTest)
+        Expect(!nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(config, &*catalog).validation_issue.empty(),
+            "the legacy planner must reject an incompatible glove finish");
 }
 
 void TestKeychainModelInheritance()
@@ -7212,6 +7221,11 @@ int RunAllTests()
 {
     try
     {
+        if (g_live_hotpatch_only) {
+            RunNamedTest("TestLiveHotpatch", RunLiveHotpatchTests);
+            std::cout << "live hotpatch integration tests passed\n";
+            return EXIT_SUCCESS;
+        }
         if (g_stability_only)
         {
             RunNamedTest("TestStability", RunStabilityTests);
@@ -7421,6 +7435,7 @@ void ParseArguments(const int argc, wchar_t** argv)
         {
             g_logging_only = true;
         }
+        else if (argument == L"--live-hotpatch-only") { g_live_hotpatch_only = true; }
         else if (argument == L"--stability-only")
         {
             g_stability_only = true;

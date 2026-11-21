@@ -1,3 +1,5 @@
+#include "Core/BuildConfig.hpp"
+#include "Runtime/LiveHotpatch.hpp"
 #include "Core/BinaryRead.hpp"
 #include "Cs2/Runtime.hpp"
 #include "Cs2/Catalog.hpp"
@@ -91160,6 +91162,10 @@ void nskinzcs2::RuntimeController::Stop()
         worker_.join();
     }
     Logger::Info(L"Runtime stop: worker joined.");
+    if constexpr (build::kLiveHotpatchTest) {
+        g_hook_state.app_state = nullptr;
+        return;
+    }
 
     nskinzcs2::runtime::ShutdownMapRemap();
 
@@ -91256,6 +91262,10 @@ void nskinzcs2::RuntimeController::WorkerLoop()
 
 void nskinzcs2::RuntimeController::WorkerLoopImpl()
 {
+    if constexpr (build::kLiveHotpatchTest) {
+        live_test::Run(state_, module_instance_, stop_requested_, automation_refresh_event_, automation_demo_command_event_);
+        return;
+    }
     try
     {
         Logger::Info(L"Runtime worker started.");

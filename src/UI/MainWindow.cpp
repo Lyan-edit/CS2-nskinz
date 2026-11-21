@@ -5,6 +5,7 @@
 #include "Core/Log.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Runtime/DemoSkinRewrite.hpp"
+#include "Runtime/LiveHotpatch.hpp"
 #include "Runtime/WorkshopMaps.hpp"
 #include "UI/ExternalUiHost.hpp"
 #include "UI/StickerPreviewMetrics.hpp"
@@ -166,7 +167,7 @@ std::filesystem::path ResolveConfigPath()
     if (length == 0 || length >= buffer.size())
         throw std::runtime_error("Could not resolve the control-panel module/configuration path.");
     buffer.resize(length);
-    return std::filesystem::path(buffer).parent_path() / L"nSkinzCS2.json";
+    return std::filesystem::path(buffer).parent_path() / nskinzcs2::build::kConfigFileName;
 }
 
 bool IsKnifeBaseItem(const int item_id)
@@ -1184,7 +1185,9 @@ public:
         }
 
         working_config_dirty_ = false;
-        smart_applied_config_ = ConfigStore::LoadApplied(config_path_);
+        smart_applied_config_ = nskinzcs2::build::kLiveHotpatchTest
+            ? ConfigStore::LoadRuntimeApplied(config_path_,external_runtime_process_id_ ? external_runtime_process_id_ : GetCurrentProcessId())
+            : ConfigStore::LoadApplied(config_path_);
 #ifdef NSKINZCS2_UI_CAPTURE
         if (UiPreviewMissingXuidCapture())
         {
@@ -1810,6 +1813,9 @@ private:
             model_carriers_ = external_runtime_process_id_ != 0
                 ? nskinzcs2::runtime::ReadGloveApplyCarriers(config_path_.parent_path(), external_runtime_process_id_)
                 : state_.SnapshotGloveApplyCarriers();
+            if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+                if(external_runtime_process_id_!=0) live_weapon_models_=nskinzcs2::live_test::ReadWeaponModels(config_path_.parent_path(),external_runtime_process_id_);
+            }
             model_carriers_refreshed_ = model_now;
         }
         model_probe_xuid_ = 0;
@@ -1844,7 +1850,10 @@ private:
         ImGui::BeginDisabled(demo_skin_rewrite_future_.valid() || smart_apply_capture_pending_);
         ImGui::TextUnformatted(Ui(UiTextId::AppTitle));
         ImGui::SameLine();
-        ImGui::TextDisabled("%s", Ui(UiTextId::AppSubtitle));
+        ImGui::TextDisabled("%s", nskinzcs2::build::kLiveHotpatchTest ? "LIVE HOTPATCH" : Ui(UiTextId::AppSubtitle));
+        if constexpr (nskinzcs2::build::kLiveHotpatchTest) {
+            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "枪械、刀、默认 T/CT 手套与五槽贴纸使用热修；挂件使用临时 Demo 重建，创意工坊换图已恢复。保存的配置仅供编辑，每个应用按钮只提交当前项。" : "Weapons, knives, stock gloves and five stickers apply live. Charms use Temporary Demos; Workshop maps are restored. Saved settings remain staged until each item is applied.");
+        }
         ImGui::Separator();
 
         EnsureSelection();
@@ -2226,11 +2235,11 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::WeaponPaintIncompatible));
         }
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
-        {
-            PushWorkingConfig();
+        if constexpr (!nskinzcs2::build::kLiveHotpatchTest) {
+            if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
+                PushWorkingConfig();
+            DrawFieldHelp(UiTextId::ItemQualityHelp);
         }
-        DrawFieldHelp(UiTextId::ItemQualityHelp);
 
         char custom_name_buffer[64] {};
         CopyToBuffer(profile.custom_name, custom_name_buffer, sizeof(custom_name_buffer));
@@ -2327,6 +2336,9 @@ private:
                 PushWorkingConfig();
             }
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeTargetVanillaHint));
+            if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+                if(ImGui::Checkbox(nskinzcs2::build::kUiLanguageChinese ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",&profile.live_test_allow_old_demo_models)) PushWorkingConfig();
+            }
         }
 
         const bool finish_only = profile.mode == KnifeProfileMode::FinishOnly;
@@ -2376,11 +2388,11 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::WeaponPaintIncompatible));
         }
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
-        {
-            PushWorkingConfig();
+        if constexpr (!nskinzcs2::build::kLiveHotpatchTest) {
+            if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
+                PushWorkingConfig();
+            DrawFieldHelp(UiTextId::ItemQualityHelp);
         }
-        DrawFieldHelp(UiTextId::ItemQualityHelp);
 
         if (ImGui::InputInt(Ui(UiTextId::Seed), &profile.seed))
         {
@@ -2416,6 +2428,9 @@ private:
         if (missing_model_definition)
         {
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeModelRequired));
+        }
+        else if (nskinzcs2::build::kLiveHotpatchTest) {
+            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "点击智能应用实时修改刀型／饰面；不生成临时 Demo。" : "Smart Apply changes this knife live; no Temporary Demo.");
         }
         else if (model_and_finish_requested)
         {
@@ -2527,6 +2542,15 @@ private:
                 PushWorkingConfig();
             }
         }
+        if constexpr (nskinzcs2::build::kLiveHotpatchTest) {
+            if(profile.mode==GloveProfileMode::ModelAndFinish) {
+                if(ImGui::Checkbox(nskinzcs2::build::kUiLanguageChinese ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",
+                    &profile.live_test_allow_old_demo_models)) PushWorkingConfig();
+                ImGui::TextWrapped("%s",nskinzcs2::build::kUiLanguageChinese ?
+                    "仅在点击此手套的智能应用后生效。使用上游本地动画数据路径，影响当前 Demo；已知失败版本继续拦截。" :
+                    "Applies with this glove button. Uses upstream local animation data for this Demo; known failed versions remain blocked.");
+            }
+        }
         const auto carrier = model_carriers_.find(profile.xuid);
         const auto glove_item_id =
             profile.mode == GloveProfileMode::ModelAndFinish
@@ -2569,11 +2593,11 @@ private:
             !IsCompatibleGlovePaint(catalog, glove_item_id, profile.paint_kit))
             ImGui::TextWrapped("%s", Ui(UiTextId::GlovePaintMismatch));
 
-        if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
-        {
-            PushWorkingConfig();
+        if constexpr (!nskinzcs2::build::kLiveHotpatchTest) {
+            if (ComboById(Ui(UiTextId::Quality), catalog.qualities, profile.quality, 8, nullptr, QualityOptionDisplayName))
+                PushWorkingConfig();
+            DrawFieldHelp(UiTextId::GloveQualityHelp);
         }
-        DrawFieldHelp(UiTextId::GloveQualityHelp);
 
         if (ImGui::InputInt(Ui(UiTextId::Seed), &profile.seed))
         {
@@ -2604,7 +2628,10 @@ private:
         }
         DrawFieldHelp(UiTextId::NameTagHelp);
 
-        if (profile.mode == GloveProfileMode::FinishOnly)
+        if (nskinzcs2::build::kLiveHotpatchTest) {
+            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "默认 T/CT 换特殊手套请选择模型＋饰面；智能应用走实时手套重建。" : "For stock gloves choose Model + Finish. Apply requests live native glove rebuilding.");
+        }
+        else if (profile.mode == GloveProfileMode::FinishOnly)
         {
             ImGui::TextColored(
                 ImVec4(0.42f, 0.82f, 0.58f, 1.0f),
@@ -2632,7 +2659,11 @@ private:
                 Ui(UiTextId::GlovePaintMismatch));
         }
 
-        if (status.glove_pawn_fallback_bound)
+        if (nskinzcs2::build::kLiveHotpatchTest) {
+            if(!status.detail.empty()) ImGui::TextWrapped("%s",Narrow(status.detail).c_str());
+            ImGui::TextDisabled("%s", nskinzcs2::build::kUiLanguageChinese ? "绑定及应用结果请查看下方运行时状态和测试日志。" : "See runtime status and test log for binding/apply results.");
+        }
+        else if (status.glove_pawn_fallback_bound)
         {
             ImGui::TextColored(ImVec4(0.42f, 0.82f, 0.58f, 1.0f), "%s", Ui(UiTextId::GloveCarrierPawnFallback));
         }
@@ -2747,6 +2778,19 @@ private:
         ImGui::TextWrapped("%s", Ui(UiTextId::KeychainRuntimeDescription));
         DrawScopedApplyButton(catalog, {nskinzcs2::ApplyScope::Keychain, static_cast<std::size_t>(selected_keychain_profile_)},
             UiTextId::ApplyKeychain);
+        if constexpr(nskinzcs2::build::kLiveKeychainHotpatch) {
+            ImGui::BeginDisabled(!external_runtime_process_id_ && !state_.SnapshotStatus().demo_playing);
+            if(ImGui::Button(nskinzcs2::build::kUiLanguageChinese ? "刷新挂件（当前 Demo 回跳 1 tick）":"Refresh charm (replay current Demo by 1 tick)",ImVec2(-1,0))) {
+                const DWORD pid=external_runtime_process_id_ ? external_runtime_process_id_:GetCurrentProcessId();
+                const bool sent=nskinzcs2::live_test::RequestKeychainReplay(pid);
+                keychain_refresh_note_=sent
+                    ? (nskinzcs2::build::kUiLanguageChinese ? "已请求刷新当前 Demo 的挂件，未提交其它暂存配置。":"Charm refresh queued; other staged settings were not submitted.")
+                    : (nskinzcs2::build::kUiLanguageChinese ? "运行时刷新入口尚未就绪，请先应用一个饰品项。":"Runtime refresh is unavailable; apply an item first.");
+                Logger::Info(Wide(keychain_refresh_note_));
+            }
+            ImGui::EndDisabled();
+            if(!keychain_refresh_note_.empty())ImGui::TextWrapped("%s",keychain_refresh_note_.c_str());
+        }
     }
 
     void DrawKeychainPlacementPreview(const Catalog& catalog)
@@ -2759,7 +2803,14 @@ private:
         }
         ImGui::Separator();
         ImGui::TextUnformatted(Ui(UiTextId::KeychainPlacementPreview));
+        bool model_detected=false;
+        if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+            model_probe_xuid_=profile.xuid;
+            if(const auto model=live_weapon_models_.find({profile.xuid,static_cast<std::uint16_t>(profile.base_item)});model!=live_weapon_models_.end()) {keychain_preview_legacy_=model->second;model_detected=true;}
+        }
+        ImGui::BeginDisabled(model_detected);
         ImGui::Checkbox(Ui(UiTextId::KeychainPreviewLegacy), &keychain_preview_legacy_);
+        ImGui::EndDisabled();
         const auto* layout = FindMountLayout(profile.base_item, keychain_preview_legacy_);
         if (layout == nullptr)
         {
@@ -3257,7 +3308,9 @@ private:
         RefreshCapturedDemoSkinSource();
         RefreshDemoSkinRewriteResult();
 
-        ImGui::TextWrapped("%s", Ui(UiTextId::DemoRewriteDescription));
+        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest
+            ? (nskinzcs2::build::kUiLanguageChinese ? "临时 Demo 只重建挂件。枪械、刀、手套和贴纸请使用各自的热修应用按钮；本页不会将它们写入 Demo。" : "Temporary Demos reconstruct charms only. Use each live Apply button for guns, knives, gloves and stickers; this page never serializes them.")
+            : Ui(UiTextId::DemoRewriteDescription));
         ImGui::Separator();
 
         char source_buffer[2048] {};
@@ -3282,7 +3335,7 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::DemoRewriteSourceWaiting));
         }
 
-        const auto has_xuid = nskinzcs2::runtime::HasEnabledCosmeticXuid(working_config_);
+        const auto has_xuid = nskinzcs2::runtime::HasEnabledCosmeticXuid(nskinzcs2::runtime::SelectTemporaryDemoCosmetics(working_config_));
         const auto plan = nskinzcs2::runtime::BuildDefaultDemoSkinRewritePlan(working_config_, &catalog);
         ImGui::Text(
             Ui(UiTextId::DemoRewriteProfilesFormat),
@@ -3319,7 +3372,11 @@ private:
             }
             else
             {
-                const auto config = working_config_;
+                auto config = working_config_;
+                if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+                    config = *smart_applied_config_;
+                    config.keychain_profiles = working_config_.keychain_profiles;
+                }
                 pending_apply_config_ = config;
                 pending_prepare_map_ = true;
                 smart_apply_rebuild_pending_ = true;
@@ -3377,6 +3434,9 @@ private:
 
     void StageStickerEdit()
     {
+        if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+            if(!working_config_.profiles.empty()) CurrentProfile().stickers[static_cast<std::size_t>(std::clamp(selected_weapon_sticker_,0,4))].live_slot_override=true;
+        }
         PushWorkingConfig();
     }
 
@@ -3722,9 +3782,13 @@ private:
         int& selected_sticker)
     {
         const auto legacy_entry = catalog.weapon_paint_uses_legacy_model.find(paint_kit);
-        const bool legacy_model = legacy_entry == catalog.weapon_paint_uses_legacy_model.end()
+        bool legacy_model = legacy_entry == catalog.weapon_paint_uses_legacy_model.end()
             ? true
             : legacy_entry->second;
+        if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+            model_probe_xuid_=xuid;
+            if(const auto model=live_weapon_models_.find({xuid,static_cast<std::uint16_t>(weapon_definition)});model!=live_weapon_models_.end()) legacy_model=model->second;
+        }
         const nskinzcs2::runtime::DemoResolvedStickerPlacement* resolved_placement = nullptr;
         std::int64_t best_tick_distance = std::numeric_limits<std::int64_t>::max();
         bool best_uses_active_ticks = false;
@@ -3790,6 +3854,9 @@ private:
                 best_available_slots = available_slots;
             }
         }
+        // This live writer explicitly applies the displayed preset/transform;
+        // an old generated-Demo manifest must not override this preview.
+        if constexpr(nskinzcs2::build::kLiveHotpatchTest) resolved_placement=nullptr;
         ImGui::Columns(2, nullptr, false);
         ImGui::PushID(scope_id);
         ImGui::BeginChild("StickerList", ImVec2(0.0f, 180.0f), true);
@@ -3972,7 +4039,7 @@ private:
             StageStickerEdit();
         }
 
-        ImGui::TextWrapped("%s", Ui(UiTextId::StickerDemoOnly));
+        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::build::kUiLanguageChinese ? "仅当前槽／全部五槽按对应按钮实时应用；添加、替换、清除和位置参数使用同一热修路径。" : "Apply this slot or all five live: add, replace, clear and placement use one patch path.") : Ui(UiTextId::StickerDemoOnly));
 
         DrawStickerPlacementPreview(
             stickers,
@@ -3981,7 +4048,7 @@ private:
             legacy_model,
             LookupName(catalog.base_items, weapon_definition),
             resolved_placement);
-        ImGui::TextWrapped("%s", Ui(UiTextId::StickerExistingSlotReplacementHelp));
+        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::build::kUiLanguageChinese ? "只修改已应用的槽位；其余原贴纸保留。应用的槽位使用预览中的预设／自定义位置。" : "Only applied slots change; other source stickers remain. Applied slots use the displayed preset/custom placement.") : Ui(UiTextId::StickerExistingSlotReplacementHelp));
 
         DrawScopedApplyButton(catalog,
             {nskinzcs2::ApplyScope::Sticker, static_cast<std::size_t>(selected_profile_), selected_sticker},
@@ -4028,6 +4095,12 @@ private:
             {
                 smart_reconstructed_knives_ = plan.reconstructed_knives;
                 demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::CurrentItemAppliedLive));
+                if constexpr(nskinzcs2::build::kLiveKeychainHotpatch) {
+                    if(pending_apply_target_ && pending_apply_target_->scope==nskinzcs2::ApplyScope::Keychain) {
+                        const DWORD pid=external_runtime_process_id_ ? external_runtime_process_id_:GetCurrentProcessId();
+                        nskinzcs2::live_test::RequestKeychainReplay(pid); // Also permits reapplying identical charm settings.
+                    }
+                }
             }
             return;
         }
@@ -4194,7 +4267,9 @@ private:
         const bool external_update = external_runtime_process_id_ != 0;
         const bool published = external_update
             ? nskinzcs2::ui::PublishExternalConfigUpdate(external_runtime_process_id_, config_path_, requested, prepare_map)
-            : ConfigStore::SaveApplied(config_path_, requested);
+            : nskinzcs2::build::kLiveHotpatchTest
+                ? ConfigStore::SaveRuntimeApplied(config_path_,GetCurrentProcessId(),requested)
+                : ConfigStore::SaveApplied(config_path_, requested);
         if (!published)
         {
             demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::ApplyPublicationFailed));
@@ -4324,6 +4399,7 @@ private:
     std::unordered_map<std::uint64_t, nskinzcs2::GloveApplyCarrier> model_carriers_;
     ULONGLONG model_carriers_refreshed_ = 0;
     ULONGLONG model_query_published_ = 0;
+    nskinzcs2::live_test::WeaponModels live_weapon_models_;
     std::uint64_t model_probe_xuid_ = 0;
     bool model_probe_activated_ = false;
     bool working_config_dirty_ = false;
@@ -4344,6 +4420,7 @@ private:
     ULONGLONG smart_apply_capture_deadline_ = 0;
     std::filesystem::path smart_apply_source_;
     bool keychain_preview_legacy_ = false;
+    std::string keychain_refresh_note_;
     ImVec2 keychain_drag_offset_ {};
     bool sticker_preview_dragging_ = false;
     WorkshopMapScanResult workshop_scan_;

@@ -137,6 +137,11 @@
     <ClCompile Include="src\Cs2\Compatibility.cpp" />
     <ClCompile Include="src\Cs2\GlobalResourceSwapper.cpp" />
     <ClCompile Include="src\Cs2\Runtime.cpp" />
+    <ClCompile Include="src\Runtime\LiveHotpatch.cpp" />
+    <ClCompile Include="src\Runtime\LivePresentation.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\game.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\skins.cpp" />
+    <ClCompile Include="third_party\live_cosmetics\src\util.cpp" />
     <ClCompile Include="src\Runtime\GloveAppearance.cpp" />
     <ClCompile Include="src\Runtime\DemoSkinRewrite.cpp" />
     <ClCompile Include="src\Runtime\GloveVisualRefresh.cpp" />
@@ -160,6 +165,8 @@
     <ClCompile Include="src\Runtime\RadarNativeCompiler.cpp" />
     <ClCompile Include="src\Runtime\WorkshopMaps.cpp" />
     <ClCompile Include="src\Tests\Main.cpp" />
+    <ClCompile Include="src\Tests\LiveHotpatchTests.cpp" />
+    <ClCompile Include="src\Tests\LiveExtrasTests.cpp" />
     <ClCompile Include="src\Tests\StabilityTests.cpp" />
     <ClCompile Include="src\UI\StickerPreviewPlacement.generated.cpp">
       <Optimization>Disabled</Optimization>

@@ -16,6 +16,12 @@ public:
     static std::filesystem::path AppliedPath(const std::filesystem::path& editor_path);
     static model::ConfigDocument LoadApplied(const std::filesystem::path& editor_path);
     static bool SaveApplied(const std::filesystem::path& editor_path, const model::ConfigDocument& document);
+    // Editor files persist across runs. Applied transactions belong to one
+    // injected process and start empty, even if that process ID was reused.
+    static bool BeginRuntimeSession(const std::filesystem::path& editor_path, std::uint32_t process_id);
+    static model::ConfigDocument LoadRuntimeApplied(const std::filesystem::path& editor_path, std::uint32_t process_id);
+    static bool SaveRuntimeApplied(const std::filesystem::path& editor_path, std::uint32_t process_id,
+        const model::ConfigDocument& document);
     static model::CosmeticProfile* FindMatchingProfile(
         model::ConfigDocument& document,
         std::uint64_t xuid,

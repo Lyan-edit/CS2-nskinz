@@ -13,9 +13,10 @@
 
 namespace nskinzcs2::runtime
 {
-// All keychain changes are persisted in Temporary Demos. No runtime module
-// writes, missing-module factories or keychain-only entity scans are allowed.
+// Charms use Temporary Demo reconstruction. The live adapter must not mutate
+// charm attributes or enter the legacy module/factory paths.
 inline constexpr bool kKeychainsTemporaryDemoOnly = true;
+model::ConfigDocument SelectTemporaryDemoCosmetics(const model::ConfigDocument& config);
 inline constexpr wchar_t kCurrentDemoPathSidecarName[] = L"nSkinzCS2.current-demo.txt";
 inline constexpr wchar_t kGeneratedDemoDirectoryName[] = L"nskinz_temp";
 inline constexpr wchar_t kGeneratedDemoFilePrefix[] = L"nskinz_skin_";

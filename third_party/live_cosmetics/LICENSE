@@ -1,0 +1,76 @@
+DemoTools2 Source-Available License
+Version 1.0
+
+Copyright (c) 2026 janglijoshi. All rights reserved.
+
+DemoTools2 (the "Software") - its source code, build scripts, generated data files, documentation and any compiled
+binaries made from it - is owned by the copyright holder named above. The Software is published so people can read
+it, learn from it, build it for themselves and help improve it. It is NOT open source. Except for the permissions
+written below, no rights are granted.
+
+1. WHAT YOU MAY DO
+
+   a) View and study the source code.
+   b) Download, compile and run the Software on your own computer for your own personal, non-commercial use.
+   c) Change your own local copy for your own personal, non-commercial use, as long as you do not share it
+      (see section 2).
+   d) Fork this repository on GitHub, only as far as the GitHub Terms of Service require, and only to propose changes
+      back to this repository through pull requests.
+   e) Share links to the official repository and to the official releases.
+
+2. WHAT YOU MAY NOT DO
+
+   Without the copyright holder's prior written permission, you may not:
+
+   a) Copy, re-upload, mirror, republish or redistribute the Software or any part of it - source code or compiled
+      binaries, changed or unchanged - anywhere other than the official repository and its official releases.
+   b) Sell, rent, license, or otherwise use the Software or any part of it commercially, including bundling it with
+      paid products, paid services, paid access, or putting it behind a paywall, subscription, key or login.
+   c) Include the Software, or code taken from it, in another project, program, tool, mod or plugin.
+   d) Remove, hide or change this licence, copyright notices, credits or "about" information in the Software.
+   e) Claim, suggest or imply that you made the Software or any part of it, or publish it under another name.
+   f) Use the names "DemoTools2" or "DemoTools" for another product, or in a way that suggests the copyright holder
+      endorses you or your work.
+
+3. CONTRIBUTIONS
+
+   If you send a contribution (for example a pull request, patch, issue text or code snippet), you confirm that you
+   have the right to send it, and you grant the copyright holder a perpetual, worldwide, irrevocable, royalty-free
+   licence to use, change, relicense and distribute it as part of the Software or otherwise. Contributors receive no
+   ownership of the Software.
+
+4. THIRD-PARTY COMPONENTS
+
+   Some files in this repository belong to others and are licensed under their own terms, which take precedence for
+   those files. They are listed in NOTICE.md (for example, Dear ImGui under the MIT licence in third_party/imgui/).
+   This licence does not restrict your rights to those components under their own licences.
+
+5. TRADEMARKS AND AFFILIATION
+
+   Counter-Strike 2, CS2, Steam and Valve are trademarks of Valve Corporation. HLAE belongs to the advancedfx project.
+   The Software is not made by, affiliated with, or endorsed by Valve Corporation or the advancedfx / HLAE project.
+   Names of in-game items appear only so the Software can refer to them.
+
+6. USE AT YOUR OWN RISK
+
+   The Software only works in CS2 demo playback started with "-insecure" (through HLAE). You are responsible for how
+   you use it and for following the terms of any game or service you use it with.
+
+7. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+   THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+   CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+   IN THE SOFTWARE, INCLUDING LOSS OF DATA, GAME CRASHES, OR ACTIONS TAKEN BY THIRD PARTIES AGAINST YOUR ACCOUNTS.
+
+8. TERMINATION
+
+   Any use outside these terms ends all permissions given to you by this licence, automatically and immediately.
+   The copyright holder may enforce these terms, including by sending takedown notices (such as DMCA notices) for
+   copies published without permission.
+
+9. PERMISSION REQUESTS
+
+   For any use not allowed above (for example, including DemoTools2 in a project, redistributing it, or commercial
+   use), ask the copyright holder first through the official repository's issue tracker or contact details.

@@ -69,6 +69,7 @@ struct StickerProfile
     bool custom_position = false;
     float offset_x = 0.0f;
     float offset_y = 0.0f;
+    bool live_slot_override = false; // Explicitly apply/clear this slot; absent slots stay untouched.
 };
 
 struct CosmeticProfile
@@ -110,6 +111,7 @@ struct KnifeProfile
     int stat_trak = 0;
     float wear = 0.0000001f;
     std::string custom_name;
+    bool live_test_allow_old_demo_models = true;
 };
 
 enum class GloveProfileMode
@@ -131,6 +133,7 @@ struct GloveProfile
     int quality = 0;
     int seed = 0;
     float wear = kMinimumCosmeticWear;
+    bool live_test_allow_old_demo_models = true; // Applied with this model profile; user-requested test default.
 };
 
 struct KeychainProfile
@@ -153,6 +156,7 @@ struct DemoMirvPlayerEntry
 
 struct MapRemapProfile
 {
+    bool operator==(const MapRemapProfile&) const = default;
     bool enabled = false;
     // Keep the demo's original GameSession map name for Panorama/POV radar
     // while the world-loading messages are redirected to the workshop map.

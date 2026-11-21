@@ -1,4 +1,4 @@
-[![nSkinzCS2 offline demo cosmetic toolkit](./docs/assets/nskinz-banner.svg?v=0.7.5)](./docs/assets/nskinz-banner.svg?v=0.7.5)
+[![nSkinzCS2 offline demo cosmetic toolkit](./docs/assets/nskinz-banner.svg?v=0.7.6)](./docs/assets/nskinz-banner.svg?v=0.7.6)
 
 <h3 align="center">Offline Counter-Strike 2 cosmetic overrides for HLAE demo playback</h3>
 
@@ -10,7 +10,7 @@ Map-resource diagnostics were assisted by [Source 2 Viewer](https://s2v.app) ([V
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.5"><img src="https://img.shields.io/badge/release-v0.7.5-2ea043?style=flat-square" alt="Latest stable release"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.6"><img src="https://img.shields.io/badge/release-v0.7.6-2ea043?style=flat-square" alt="Latest stable release"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/releases"><img src="https://img.shields.io/github/downloads/Lyan-edit/CS2-nskinz/total?style=flat-square&label=downloads" alt="Total downloads"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz"><img src="https://img.shields.io/github/stars/Lyan-edit/CS2-nskinz?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/network/members"><img src="https://img.shields.io/github/forks/Lyan-edit/CS2-nskinz?style=flat-square" alt="Forks"></a>
@@ -21,274 +21,74 @@ Map-resource diagnostics were assisted by [Source 2 Viewer](https://s2v.app) ([V
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-EN.dll"><img src="https://img.shields.io/badge/Download-English%20DLL-2ea043?style=for-the-badge" alt="Download English DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="Download Chinese DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.5"><img src="https://img.shields.io/badge/Release-v0.7.5-2ea043?style=for-the-badge" alt="v0.7.5 release notes"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.6/Lyan_nskinz-v0.7.6-EN.dll"><img src="https://img.shields.io/badge/Download-English%20DLL-2ea043?style=for-the-badge" alt="Download English DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.6/Lyan_nskinz-v0.7.6-zh-CN.dll"><img src="https://img.shields.io/badge/下载-中文%20DLL-0969da?style=for-the-badge" alt="Download Chinese DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.6"><img src="https://img.shields.io/badge/Release-v0.7.6-2ea043?style=for-the-badge" alt="v0.7.6 release notes"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/issues/new/choose"><img src="https://img.shields.io/badge/Report%20an%20issue-f85149?style=for-the-badge" alt="Report an issue"></a>
 </p>
 
 > **Safety first:** nSkinzCS2 is intended only for offline demo playback started through HLAE with `-insecure`. Never load it on VAC-protected or online servers. The author does not guarantee account safety for use outside this scope.
 
-## What's new in v0.7.5
+## What's new in v0.7.6
 
-Fix configuration/version races, reuse immutable live snapshots, and reduce UI CPU usage when occluded or minimized. Recover the control panel after graphics-device errors and resize its backbuffer safely. Reject truncated VPK payloads before allocation, bound tree strings, and isolate foreign-thread frame callbacks. Retain the Workshop manifest hook repair, fixed8 Demo repair, all 19 Doppler labels and locked transparent radars.
+Use live changes for guns, every knife mode, stock T/CT gloves and other glove models, and all five sticker slots. Charms use Temporary Demo reconstruction. Restore Workshop maps and fixed transparent radars. Start each process with an empty applied session so saved knife/glove settings cannot activate when only a gun is applied. Retain right-side HUD names, current-holder targeting and model-specific previews.
 
-Full native regressions, 42 parser tests, 30 ordinary rewriter tests, 12 real-panel scenarios and isolated bilingual DLL loading pass. Installed compatibility baseline: **CS2 2000943 / 1.41.9.7**. Gameplay frame times and long-session/seek acceptance remain to be tested; offline microbenchmarks are not an FPS claim. See the [release notes](docs/releases/v0.7.5.md) and [stability audit](docs/diagnostics/stability-audit-20261117.md).
+See the [bilingual release notes](docs/releases/v0.7.6.md). The locally inspected client is **CS2 2000948 / 1.42.0.0**. The user accepted knives, gloves and HUD behavior in the preceding test build. No CS2/HLAE process was started for this release; other recordings, rendered results and frame times still require acceptance testing.
 
+## Features and application routes
 
-## What's new in v0.6.4
-
-- Lock the approved **Inferno Water** transparent radar and embed **19 reviewed radar texture versions**. Known versions reuse the same saved image; cleanup controls cannot regenerate the fixed standard. Reviewed references use lossless native RGBA8888.
-- Refresh existing right-side knife HUD labels from the complete localized item name after material changes, with guarded native callbacks and one submission per configuration/panel.
-- Correct five-slot sticker schema semantics and preview source placements from the final generated Demo, matched to the player, weapon entity and active tick. Restoring presets now writes their transforms explicitly.
-- Distinguish **Profile name** from **In-game name tag** and translate all quality options in the Chinese UI while preserving their economic-item values.
-- Preserve routing: knife Model + Finish, default T/CT gloves and keychains use Temporary Demo; knife Finish-only hot-updates the current Demo. The cover and actual control-panel capture are refreshed.
-
-Restart the process carrying the old DLL and load one v0.6.4 language build. Press Update for live changes; regenerate reconstructed items from the original recording. Reload the Demo after updating the radar.
-
-Full C++ and radar regressions pass. The installed verification client is CS2 `2000940`; knife material/name/HUD entry points were checked against it, while other modules retain their existing protections. Per-Demo visual acceptance remains required; no game or HLAE process was started for this release.
-
-See the [bilingual release notes](docs/releases/v0.6.4.md), [fixed Inferno Water standard](docs/diagnostics/inferno-water-radar-standard-20261103.md), and [radar reference library](assets/radar_references/README.md).
-
-## Retained keychain reconstruction
-
-- Keychain replacement, addition and explicit removal now use Temporary Demo reconstruction exclusively. Existing placement/seed are preserved; new mounts derive from 34 firearm models' marked default regions.
-- Live keychain writes, factories and keychain-only scanning are disabled. Idle/generated-Demo factory callbacks exit before copying configuration, and the external rewriter runs at below-normal CPU priority.
-- Four independent recordings passed reconstruction, removal and seek checks: 1,317 weapon handles, 506,431 target records, 3,106 Created snapshots and 202 independent seek readbacks. Rendered keychain appearance and gameplay frame-time improvement remain in-game acceptance items.
-- Retains default T/CT glove reconstruction, other cosmetic/map features and the CS2 `2000935` / HLAE `2.192.8` baseline.
-
-Restart CS2/HLAE, load one v0.6.4 DLL and regenerate the Temporary Demo from the original recording after configuring keychains. Update alone does not change a live keychain.
-
-See the [bilingual release notes](docs/releases/v0.6.4.md) and [keychain implementation/regression evidence](docs/development/keychain-temporary-demo-20261026.md).
-
-## What's new in v0.6.1
-
-- Rebased the guarded knife, stock-glove, weapon-material, animation and resource paths on CS2 `2000932` / Patch `1.41.9.1` (Steam Build `25947352`).
-- Preserved five-slot sticker creation, custom placement, sliders, exact weapon preview and throttled live synchronization across the update.
-- Reduced frame-side overhead by caching entity classification per generation and immutable catalog-derived UI lists.
-- Revalidated the full installed catalog, arbitrary-field Demo rewriting, firearm materials, Workshop radar masking and CS2-native radar compilation.
-- Updated the tested HLAE baseline to `2.192.7` / AfxHookSource2 `0.41.7`.
-
-See the [bilingual v0.6.1 release notes](docs/releases/v0.6.1.md) for exact compatibility evidence, validation and limitations.
-
-## What's new in v0.5.8 (previous stable)
-
-- Temporary Demo can now create a requested firearm sticker slot that is missing from the source demo, writing the complete ID/wear/scale/rotation group at the weapon's native preset position.
-- Existing stickers still replace only their kit ID and retain the demo's wear, scale, rotation and CS2 free-placement data.
-- Sticker and paint fields share one collision-safe Econ attribute allocator, and the generated demo is reparsed to verify every requested slot before playback is queued.
-- Free placement is intentionally deferred: v0.5.8 does not create or modify offset X/Y or schema attributes. Live Update remains existing-slot only; missing slots require Temporary Demo.
-
-See the [bilingual v0.5.8 release notes](docs/releases/v0.5.8.md) for the exact scope, usage and validation boundary.
-
-## What's new in v0.5.6 (previous stable)
-
-- Fixed valid current-CS2 demos failing with `serialized entity length count mismatch`. The writer maps arbitrary sparse `serialized_entities` tables to the packet's actual field-bearing commands while preserving full-entry and delete-inclusive layouts.
-- Runtime status, schema/entity bindings, application counts, diagnostics and catalog warnings moved into a collapsed-by-default Runtime diagnostics panel.
-- Source 2 writer `41/41`, demo rewriter `11/11`, both language builds and a 310 MB end-to-end rewrite/reparse passed on the checked CS2 2000922 baseline.
-
-See the [bilingual v0.5.6 release notes](docs/releases/v0.5.6.md).
-
-## What's new in v0.5.4
-
-- Firearms that already carry a networked finish retain the verified v0.4.5 runtime path. Stock/default firearm carriers are now materialized in the generated temporary demo before playback, then continue through the same live appearance path.
-- Gloves that already carry a networked finish retain the guarded live path. Stock T/CT glove carriers are materialized in the generated temporary demo with definition, paint, seed and wear before the second playback is parsed.
-- Target knife animation skeletons are no longer expected in the source demo. The rewriter validates the target compiled skeleton in the installed CS2 loose content or `pak01_dir.vpk`, then inserts the standard `AnimAssetData` loader record.
-- Knife model/animation listeners survive demo reload and entity-generation adoption. Weapon-slot and HUD consumers are separated to address knives appearing in the pistol position and stale pistol/original-dagger actions.
-- Stock AK-47 carriers now resolve the verified CS2 2000919 material generator and run the engine-owned material initialization once per entity generation. The resulting material state is cached instead of being refreshed every frame.
-- Guns, knives and gloves support name tags. An empty custom value uses `nSkinz CS2`; a non-empty value is serialized as the selected custom name.
-- Added released Workshop map-model replacement: discover installed subscriptions, select a target map, arm it during the first demo load, then apply it while the same demo is loaded a second time. Safe stale source-map generated models are suppressed; compiled/baked geometry remains map-dependent.
-- Workshop radar overlays now detect map-specific neutral matte/grid levels automatically. Ancient Night's opaque gray grid is removed without using a destructive global threshold, and recovered Inferno Water edge/corridor pixels inherit neighbouring road colour instead of reappearing as opaque black residue.
-- Filenames, panel title and startup log identify `v0.5.4`. This release uses CS2 Steam Build `25588766`, Client/Server `2000919`, Patch `1.41.8.6`, Source revision `11049427`; HLAE `2.192.6`.
-
-Map models/radars, knife models/actions and stock carriers still require rendered acceptance for each demo/map pair. The full native suite and isolated loader gates pass, but automated validation is not a substitute for that visual check. See the [bilingual v0.5.4 release notes](docs/releases/v0.5.4.md).
-
-## What's new in v0.4.5
-
-- Fixed stock firearms failing to apply a selected finish on CS2 builds where Schema exposes the 72-byte attribute layout but no vector mutation callback. Missing paint/seed/wear nodes now use a strictly byte-verified engine-owned append path.
-- Removed the duplicate full entity scan seen in the supplied log. The verified CS2 chunk layout now provides direct indexed lookup, and live-ceiling discovery fills the cache in the same pass.
-- Repeated Update operations reuse the neutral engine-owned attribute tail instead of growing the vector each time.
-- Included the current independent knife-model chain as an **experimental** source/runtime feature. Model, deploy and inspect replacement have progressed, but first-deploy continuity, dropped/teammate-issued knives and every HUD handoff are not certified complete.
-- Compiled/ZIP binaries are named `Lyan_nskinz v0.4.5 EN.dll` and `Lyan_nskinz v0.4.5 zh-CN.dll`; both retain static `/MT` and embedded UI shaders. GitHub normalizes spaces in direct attachment names, so the standalone download assets use stable hyphenated aliases.
-
-The supplied v0.4.4 log showed a firearm request ending at `changed_slots=0, verified=0` while cosmetic polling averaged about 31 ms. v0.4.5 directly addresses both causes. The complete native regression suite, current-client read-only signature checks and isolated loading checks pass; rendered acceptance on the affected friend's demo remains a user validation boundary. See the [bilingual v0.4.5 release notes](docs/releases/v0.4.5.md).
-
-<details>
-<summary>Retained v0.4.3 fixes</summary>
-
-- Fixed modern/legacy gun mesh selection from installed paint metadata, including M4A4 Full Throttle → The Emperor.
-- Fixed first-person gun HUD lookup outside the network-entity cache. An expected but unresolved active HUD now stays pending before any appearance writes.
-- Filtered gun finishes by exact weapon/paint compatibility, with the same checks in runtime writes and imported configs. The full catalog is preserved; invalid selections are shown explicitly, not silently changed to vanilla.
-- Bound completed gun refreshes to verified carrier/render object generations. Stable bindings, holstering and replicated-field repairs do not invalidate them.
-- Retained isolated-panel IME/search fixes, static MSVC `/MT` and embedded UI shaders. Independent knife-model work remains read-only and unfinished.
-
-The user confirmed the Emperor fix in their local demo. **45 native regressions**, **8 targeted checks**, both language builds and isolated loading/rendering checks passed. Catalog coverage is **34 guns / 1,449 valid pairs**, not visual certification of every finish. See the [bilingual v0.4.3 release notes](docs/releases/v0.4.3.md).
-
-</details>
-
-<details>
-<summary>Retained v0.4.1 fixes</summary>
-
-- Fixed the CS2 crash triggered by IME input and typing in the skin search fields, including English input. The full control panel now runs in an isolated host outside `cs2.exe`, using the system's `rundll32.exe`; no additional application download is required.
-- Preserved the full installed-game catalog in the isolated panel, including localized skin names.
-- Fixed dynamic weapon finish synchronization and redundant knife material regeneration.
-- `Finish only` hides and ignores the knife model selector; model selection is available only in `Finish + model`.
-- Removed the blocking mesh-update sleep/retry loop, repeated runtime catalog copies, and synchronous file logging from frame callbacks.
-
-The v0.4.1 validation passed **42 native regression tests**. The mesh-function benchmark improved from 3714 ms to approximately 0.1 ms for 240 updates; this is **not** an in-game FPS measurement or a claim that every demo stutter is resolved. See the [bilingual v0.4.1 release notes](docs/releases/v0.4.1.md) for verification boundaries and known limitations.
-
-</details>
-
-## What is nSkinzCS2?
-
-nSkinzCS2 is a Windows x64 DLL that edits the watched player's cosmetic appearance while a Counter-Strike 2 demo is being viewed. It is loaded with HLAE `mirv_loadlibrary`, reads the installed CS2 catalog, and applies guarded, XUID-targeted overrides through a small Win32 + D3D11 + Dear ImGui control panel.
-
-![nSkinzCS2 control panel](./docs/assets/control-panel.png?v=0.7.5)
-
-Real current UI render with example data; no game process connected. [Capture details](docs/assets/control-panel.capture.json).
-
-## Feature matrix
-
-| Area | Supported in v0.7.5 | Notes |
+| Module | How to use | Route |
 | --- | --- | --- |
-| Weapons | Compatible finish list, seed, wear, quality, name tag and sticker replacement/creation | Temporary Demo can update stock and already-painted weapons. Existing stickers keep their transform/free placement; a requested missing logical slot is created at the weapon's native preset position. Exact weapon/paint checks still protect runtime writes and configs. |
-| Knives | Live Finish-only; Model + Finish through Temporary Demo reconstruction | Switching to Finish-only retains the current reconstructed model. Later cosmetic rebuilds preserve that model; model/deploy/inspect rendering still needs per-Demo visual acceptance. |
-| Gloves | T/CT glove carriers, model and finish | Existing paint attributes are overwritten in place; default and generated-Demo gloves are reconstructed before playback and remain read-only at runtime. |
-| Temporary skin demo | Generate and load a verified second `.dem` containing knife, firearm, glove, sticker and keychain changes | Implemented by the embedded open-source nSkinz rewriter; it can grow a firearm's Econ attribute vector for missing sticker slots. The source demo is never overwritten, and the output is parsed again before it is loaded. |
-| Workshop maps | Detect installed subscriptions; replace the map and safe source-map generated models on the demo's second load | Workshop map routing. It does not rewrite the `.dem` or Workshop files. Geometry baked into the source BSP/VPK may remain when the target map has no safe one-to-one replacement. |
-| Keychains | Replace, add or clear through Temporary Demo reconstruction | Preview custom placement with a blue marker and X/Y sliders. Automatic placement preserves an existing mount and seed, or uses the model default for a new keychain. |
-| Vanilla / no finish | Explicit `Vanilla (No Finish)` option | This is different from `- (Do not modify)`. A stale first-person knife material may survive on some demo items. |
-| Languages | English and Simplified Chinese DLLs | The Chinese build reads names from the installed `csgo_schinese.txt` catalog. |
+| Guns | Select the current holder XUID, firearm, finish, seed, wear and name; apply that gun | Live |
+| Knives | Finish-only detects the current model and filters compatible paints; Model + Finish selects a target model | Both modes live |
+| Gloves | Finish-only filters the current glove model; use Model + Finish for stock T/CT gloves or model changes | Both modes live |
+| Stickers | Configure any of five slots, including wear/scale/rotation/position; apply one slot or explicitly apply all five; empty slots clear | Live |
+| Charms | Configure holder, firearm, charm and blue placement preview; apply that charm | Reconstruct from the original Demo |
+| Workshop maps | Subscribe/download in Steam, scan and choose a playable map, then apply | Reload the current Demo; no cosmetic XUID required |
+| HUD | Synchronize full right-side weapon/knife names after appearance/model changes | Native HUD bridge retained |
+
+Each Apply button submits only its item. Other edits remain staged; Save/Load edits the editor document only. Item quality follows the integrated engine's automatic policy rather than an ineffective manual control.
 
 ## Quick start
 
-v0.7.5 embeds precompiled UI shaders, the independent demo rewriter, 19 reviewed radar references, including the locked Inferno Water standard, and retains `/MT`. No additional runtime installation is needed beyond Windows 10/11 x64, CS2 and HLAE. See [single-DLL loading and diagnostics](docs/portable-loading.md) for `LoadLibrary failed` troubleshooting.
-
-1. Start CS2 through HLAE with `-insecure`, then open an offline demo.
-2. Download one of the two Release DLLs. Release binaries use the static MSVC runtime (`/MT`), so no Visual C++ Redistributable, Python, SDK or compiler is required.
-3. In HLAE, load the DLL:
+1. Fully exit CS2/HLAE carrying an older DLL. Start offline Demo playback through HLAE with `-insecure`.
+2. Download one language DLL, place it in a writable folder and run (replace with the actual path):
 
 ```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.7.5-EN.dll"
+mirv_loadlibrary "D:\Lyan_nskinz-v0.7.6-EN.dll"
 ```
 
-For the Simplified Chinese UI:
+3. Press `Insert`, enter the current holder's XUID, configure an appearance and press its Apply button.
+4. Guns, knives, gloves and stickers update live. Charm Apply captures the original Demo, generates a temporary file and loads it.
+5. The selected sticker is yellow and other configured slots are white. Charms are blue. Preview edits stay staged until that item's Apply button is pressed.
 
-```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.7.5-zh-CN.dll"
-```
+The DLLs embed shaders, the rewriter and 19 reviewed radar references, with the static MSVC runtime. Players do not need Python, an SDK or Visual Studio. Load only one language; do not stack releases, test DLLs or another cosmetic DLL in the same process. See [portable loading](docs/portable-loading.md).
 
-These examples require the DLL to be in the root of drive D. Use your actual full path. Paths without spaces need no quotes; if there are spaces, use exactly one pair of ASCII quotes, e.g. `mirv_loadlibrary "D:\My Tools\nSkinzCS2.dll"`. Never double-wrap the path or use typographic quotes.
+## Settings and sessions
 
-Press `Insert` to show the panel, choose a watched-player XUID and cosmetic profile, then press `Smart Apply`. Keep the DLL in a writable folder: the isolated panel and runtime share generated catalog/config sidecars there. Runtime diagnostics are written to `nSkinzCS2.log`; panel diagnostics to `nSkinzCS2.ui.log`.
+- Editor settings: `nSkinzCS2.json`. Older release configurations remain editable. Back up and rename a test `nSkinzCS2.live-test.json` when migrating.
+- Process applications: `nSkinzCS2.session-<CS2 PID>.applied.json`. Every DLL load starts empty, including a reused PID. Historical applied documents never activate a new session.
+- Reopening the panel retains explicitly applied items in this process; seeks, map reloads and charm reconstruction retain them. Restarting requires clicking Apply again. Source-recorded cosmetics remain part of the recording.
+- Logs: `nSkinzCS2.log` and `nSkinzCS2.ui.log`. The integrated engine keeps its existing `%TEMP%\nSkinzCS2-live-test-0.7.5\` history directory to preserve recorded model failures.
+- Temporary Demo planning/execution filters out guns, knives, gloves and stickers. Only charms are reconstructed; original recordings are not overwritten. Map Apply does not require a cosmetic XUID or rewrite cosmetics.
 
-When upgrading, restart HLAE/CS2 and load **only one** language DLL. Back up your existing config; do not inject the new DLL alongside an already loaded old version. The [Windows x64 ZIP](https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.5/Lyan_nskinz-v0.7.5-CS2-2000943-windows-x64.zip) contains both language options, game-version evidence, license/notices and loading instructions.
+## Workshop maps and transparent radars
 
-## Workshop map and model replacement
+Discovery lists playable top-level maps rather than auxiliary skyboxes or prefabs. Apply arms the map redirect and reloads the current Demo. Reviewed radar versions reuse embedded references. The locked Inferno Water standard cannot be regenerated by cleanup/recovery sliders. Other map geometry and recording combinations still need visual acceptance testing.
 
-Subscribe to and fully download the target CS2 Workshop map before starting. The new `Maps` tab detects installed subscriptions from Steam's local Workshop manifest and reads only top-level `maps/<name>.vpk` packages.
+## Current native control panel
 
-1. Load the source demo once through HLAE and load nSkinzCS2.
-2. Open `Maps`, click `Rescan subscribed maps`, select the target, enable demo map replacement, and click `Use selected workshop map`.
-3. Leave `Source demo map` blank for automatic capture, then click `Smart Apply` while the first load is active. No cosmetic XUID is needed for a map-only change.
-4. Confirm the log contains `Map remap ready` and `Map remap armed`.
-5. Smart Apply queues the Demo reload. Replacement is applied while the new load is parsed.
+This is an unmodified backbuffer capture of the current MainWindow implementation, with no game connection or keyboard simulation. It retains the five-slot sticker and model-specific placement previews.
 
-All verified protobuf, KeyValues, manifest and resource hooks must be available for the detected CS2 build; otherwise the feature fails closed without installing a partial chain. This has passed compilation, native regression and local Workshop discovery checks, but each target map still needs rendered in-game acceptance.
+![nSkinzCS2 v0.7.6 control panel](./docs/assets/control-panel.png?v=0.7.6)
 
-See the [MulNX map-remap parity audit](docs/map-remap-mulnx-audit.md) for the hook-by-hook comparison and intentional framework differences.
+## Source, validation and attribution
 
-## Temporary cosmetic demo
+The Release provides bilingual DLLs, a complete binary package, corresponding source and SHA-256 checksums. See [release evidence](docs/releases/v0.7.6.md), [CHANGELOG](CHANGELOG.md) and [release history](docs/releases).
 
-This source tree can create a second demo so knife definition, subclass/model and animation data, plus missing default-firearm/default-glove economy fields, exist before CS2 parses the new playback. A target knife skeleton is never copied from the source demo: the helper verifies its compiled `.vnmskel_c` in the current CS2 installation's `game/csgo` loose content or `pak01_dir.vpk`, then inserts the standard `AnimAssetData` row that makes Source 2 load that installed resource. The ownership scan decides the route independently for every firearm and glove: a source item with an existing networked paint value is left untouched for the established live path; a stock/default source item is materialized in the temporary demo. A finish-only glove request preserves the glove definition discovered in the source demo.
+Required third-party licenses and attribution are preserved in [NOTICE](NOTICE.md) and [third-party terms](THIRD_PARTY_NOTICES.md).
 
-1. Load the original demo once, configure the watched-player XUID's firearm, knife and glove profiles, then press `Smart Apply` to capture the path and choose the live/reconstruction route.
-2. Open `Temporary Demo` and press `Generate and load temporary demo`. The embedded nSkinz helper scans ownership and source attributes first, then serializes the complete knife transaction, firearm/glove economy fields, and requested sticker changes into a new demo. A missing sticker slot receives a complete ID/wear/scale/rotation record at its native preset position; existing slots keep their recorded free-placement data.
-3. When the rewrite succeeds, nSkinzCS2 queues `playdemo` automatically. The result log reports rewritten firearms, knives and gloves plus replaced/created sticker-slot counts.
-4. The generated file is stored under `game/csgo/nskinz_temp/` with an `nskinz_skin_` prefix. The original demo is unchanged. `Load generated demo again` replays the completed file without rewriting it.
-
-Knife modes have separate routes: Model + Finish uses Temporary Demo reconstruction only; Finish-only hot-updates the current knife texture after Smart Apply, including on generated recordings, without changing its model. See the [mode routing and live-finish repair](docs/development/knife-mode-routing-live-finish-20261028.md). Firearm and glove profiles remain enabled for per-carrier routing: already-painted source items use the original live logic, reconstructed firearms receive their one native material initialization, and a reconstructed glove whose complete serialized item view matches the request is accepted without a second live write or HUD refresh. Multiple XUIDs are resolved independently during the ownership scan. See the [implementation note](docs/development/temporary-demo-skin-rewrite-20260922.md) for boundaries and failure behavior.
-
-## Compatibility baseline
-
-The installed verification client is listed below. Knife material/name/HUD entry points were checked against it; other modules retain their existing guards, without a claim of full native-address recertification. Temporary Demo can rewrite stock and already-painted firearm/glove carriers, create missing sticker slots and materialize modern placement fields; map models/radars, knives, actions and cosmetic rendering remain acceptance items for each demo.
-
-- Steam app build ID `26445667`
-- CS2 Client/Server `2000942`, patch `1.41.9.6`, Source revision `11206718` (2026-11-04 16:01:59)
-- `client.dll` SHA-256 `9279421852772522121BE2F13409DD37436E8C809FF48898C8C3D41B09E77844`
-- `animationsystem.dll` SHA-256 `CBE069AEAEFDD5F93D969985562AF8D04991A478DBDA58E8A2914CBEAC2BEA47`
-- HLAE `2.192.8`; AfxHookSource2 `0.41.8`, SHA-256 `25FE441B65F1C439668F180C494DFF7302C65D9663CC55DF01FC2FBC6E5E89AA`
-- `Source2Client002`, `ResourceSystem013` and `VFileSystem017`
-
-CS2 updates can change memory layouts. The DLL logs its detected identity and fails closed when required signatures are missing or ambiguous.
-
-<details>
-<summary><strong>Build from source</strong></summary>
-
-Requirements: Windows 10/11 x64, Visual Studio 2022 with MSVC v143, Windows SDK 10, Direct3D 11 libraries, and a local CS2 installation for catalog-backed checks.
-
-```text
-Open nSkinzCS2.sln
-Select Release | x64       # English
-Select ReleaseZhCn | x64   # Simplified Chinese
-Build the solution
-```
-
-Outputs are `build/Release/Lyan_nskinz v0.7.5 EN.dll`, `build/Release/Lyan_nskinz v0.7.5 zh-CN.dll` and `build/Release/nSkinzCS2.Tests.exe`. `run-build-and-tests.cmd` builds and runs the native regression suite; `run-tests.cmd` runs the existing test binary.
-
-</details>
-
-<details>
-<summary><strong>Repository and architecture</strong></summary>
-
-| Path | Purpose |
-| --- | --- |
-| `src/` | Bootstrap, config, catalog, runtime, appearance helpers and ImGui UI |
-| `tools/` | DIA/RVA and resource-query helper programs |
-| `third_party/` | Dear ImGui, MinHook and nlohmann/json sources |
-| `nSkinzCS2.sln` | Visual Studio solution for the DLL and native tests |
-| `run-build-and-tests.cmd` | Build and test wrapper |
-
-`AppState` connects the bootstrap, UI and runtime threads. `WeaponAppearance`, `KnifeAppearance` and `GloveAppearance` keep profile decisions testable outside the game process, while the runtime layer validates interfaces, signatures and entity bindings before writing.
-
-</details>
-
-## Known limitations and roadmap
-
-- Knife model replacement and some animation/HUD handoffs remain experimental, especially the first deploy after reconstruction and dropped or teammate-issued knives.
-- Workshop map replacement depends on the current CS2 binary signatures and the selected map's assets. A CS2 update or an incomplete subscription disables or prevents the replacement; visual acceptance remains per map.
-- If a demo knife already owns a compiled custom material, `Vanilla (No Finish)` can leave that old first-person material visible. Positive knife paint kits are verified; this stale-material reset is not claimed as fixed in v0.4.5.
-- Fully live item-schema walking is not yet preferred over installed game data.
-
-Planned work includes a more complete vanilla-material reset, broader knife model/animation coverage, rendered acceptance of added keychains and continued compatibility updates after CS2 patches. See the [keychain implementation record](docs/development/keychain-temporary-demo-20261026.md) for the Temporary-Demo-only path, source-model defaults and verification boundaries.
-
-## FAQ
-
-**Does the input fix disable Chinese or reduce the skin list?** No. The full panel is isolated from CS2's input/text-service path and reads the exported installed-game catalog. Chinese IME and English search remain available. If the list is unexpectedly short, include both logs and the catalog sidecar status in your report.
-
-**Why are fewer finishes listed for a gun?** v0.4.5 shows only that gun's compatible finishes. The full installed catalog is retained. Missing compatibility data blocks the request; an incompatible saved selection is marked unavailable, never silently converted to vanilla.
-
-**A demo still stutters.** v0.4.1 removes confirmed blocking work but does not guarantee a stutter-free demo. Keep CS2 running and include the `Runtime performance` log lines, which separate engine callbacks, cosmetic polling, mesh updates and native refresh costs.
-
-**Why does `-` not remove a finish?** `- (Do not modify)` deliberately leaves the current value untouched. Choose `Vanilla (No Finish)` when you want an explicit no-finish request.
-
-**Nothing changes after editing a profile.** Load the demo first, verify the watched-player XUID and base item, then press `Smart Apply`. Check `nSkinzCS2.log` for binding or compatibility failures.
-
-**Why can an old knife texture remain?** Some demo items carry a compiled first-person material that the current v0.4.5 vanilla path cannot always clear; this is the documented limitation above.
-
-**Which build should I use?** Download `Lyan_nskinz-v0.7.5-EN.dll` for English or `Lyan_nskinz-v0.7.5-zh-CN.dll` for the Chinese UI and catalog names. The combined ZIP retains the compiled filenames with spaces. Both DLLs target the same CS2 compatibility baseline.
-
-**The repository opens, but its images show broken icons.** Some networks cannot reach GitHub's raw asset host. The README already uses GitHub-relative image paths; as a temporary Windows network workaround, open `C:\Windows\System32\drivers\etc\hosts` in Notepad **as Administrator** and add these lines:
-
-```text
-199.232.68.133 raw.githubusercontent.com
-199.232.68.133 githubusercontent.com
-```
-
-Run `ipconfig /flushdns`, restart the browser, and reload the page. Remove these entries if they stop working or when your normal DNS path is restored. If the repository itself returns `404` in an incognito window, hosts changes cannot repair account-level visibility; contact GitHub Support.
-
-## Contributing and support
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. For security-sensitive issues, use [SECURITY.md](SECURITY.md). Bug reports should include the exact CS2 Build ID, HLAE version, DLL language, reproduction steps and a redacted log excerpt.
+For issue reports include the exact DLL, CS2/HLAE versions, selected mode, reproduction steps and redacted logs.
 
 <a name="support"></a>
 ## ❤️ Support the project
@@ -298,13 +98,3 @@ If nSkinzCS2 is useful to your offline demo workflow, optional support is apprec
 | **WeChat Pay** | **Alipay** |
 | :---: | :---: |
 | ![WeChat Pay QR code](./docs/assets/sponsor/wechat-pay.png) | ![Alipay QR code](./docs/assets/sponsor/alipay.png) |
-
-## Acknowledgements
-
-nSkinzCS2 v0.7.5 is released under [`AGPL-3.0-only`](LICENSE). Its map-remap implementation is adapted from and audited against [MulNX_CS2](https://github.com/Co1Swet/MulNX_CS2) commit `361008b208326d9e7916ff2cd58dd57a0492c400`, with the current CS2 GameSession compatibility delta synchronized from `f2466e18e26a8fc3daf4ac7945bc45220ba95993`; it does not use MulNX's file rewriter. The complete DLL Corresponding Source is released with the binaries. Preserve [`NOTICE.md`](NOTICE.md), the AGPL license, source availability and the component notices under `third_party/` when redistributing or modifying it.
-
-The temporary skin-demo implementation is nSkinz code built on the vendored open-source `source2-demo` parser/writer. Its MIT/Apache-2.0 notice and source are included under `third_party/source2-demo` and documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-<p align="center"><a href="https://star-history.com/#Lyan-edit/CS2-nskinz&Date"><img src="https://api.star-history.com/svg?repos=Lyan-edit/CS2-nskinz&type=Date" alt="Star History" width="760"></a></p>
-
-<p align="center"><sub>Built for reproducible, offline CS2 demo review. Keep it offline and keep it safe.</sub></p>
