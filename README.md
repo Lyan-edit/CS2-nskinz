@@ -31,6 +31,8 @@ Map-resource diagnostics were assisted by [Source 2 Viewer](https://s2v.app) ([V
 
 ## What's new in v0.7.6
 
+[Official Wiki (中文)](https://github.com/Lyan-edit/CS2-nskinz/wiki) · [Versioned manual source](docs/wiki/Home.md)
+
 Use live changes for guns, every knife mode, stock T/CT gloves and other glove models, and all five sticker slots. Charms use Temporary Demo reconstruction. Restore Workshop maps and fixed transparent radars. Start each process with an empty applied session so saved knife/glove settings cannot activate when only a gun is applied. Retain right-side HUD names, current-holder targeting and model-specific previews.
 
 See the [bilingual release notes](docs/releases/v0.7.6.md). The locally inspected client is **CS2 2000948 / 1.42.0.0**. The user accepted knives, gloves and HUD behavior in the preceding test build. No CS2/HLAE process was started for this release; other recordings, rendered results and frame times still require acceptance testing.
