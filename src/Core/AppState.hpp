@@ -189,6 +189,13 @@ struct MapRemapProfile
     std::string radar_overlay_file_path;
 };
 
+struct MapMaterialProfile
+{
+    bool enabled = false;
+    std::string map = "de_mirage";
+    bool operator==(const MapMaterialProfile&) const = default;
+};
+
 struct ConfigDocument
 {
     int version = 9;
@@ -197,6 +204,7 @@ struct ConfigDocument
     std::vector<GloveProfile> glove_profiles;
     std::vector<KeychainProfile> keychain_profiles;
     MapRemapProfile map_remap;
+    MapMaterialProfile map_materials;
     bool experimental_allow_hud_alias_synthetic_proxy_model_write = false;
 };
 

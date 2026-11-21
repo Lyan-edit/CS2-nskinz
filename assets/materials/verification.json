@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "payload_format": "NSKMAT01 + uint32_le JSON byte count + UTF-8 JSON + uncompressed blob",
+  "payload_bytes": 6131492,
+  "payload_sha256": "3051b49e4ccee1f6b48af7a08836fc4b1f08f3969d961564689e903d8783b360",
+  "manifest_bytes": 294328,
+  "blob_bytes": 5837152,
+  "file_count": 1450,
+  "map_counts": {
+    "de_ancient": 170,
+    "de_anubis": 220,
+    "de_cache": 84,
+    "de_dust2": 237,
+    "de_inferno": 73,
+    "de_mirage": 248,
+    "de_nuke": 215,
+    "de_overpass": 203
+  },
+  "shader_counts": {
+    "csgo_environment_blend.vfx": 223,
+    "csgo_environment.vfx": 138,
+    "csgo_lightmappedgeneric.vfx": 227,
+    "csgo_vertexlitgeneric.vfx": 548,
+    "csgo_complex.vfx": 314
+  },
+  "source_file_count": 1450,
+  "source_bytes": 2259688,
+  "sha256_verified_files": 1450,
+  "material_identities_verified": 1450,
+  "compiler_metadata_input_paths_verified": 1450,
+  "decoded_blocks": {
+    "RERL": 1450,
+    "RED2": 1450,
+    "DATA": 1450,
+    "INSG": 1450
+  },
+  "provenance_scan": "PASS: source VMAT, compiled bytes, payload bytes, and all decoded resource blocks",
+  "semantic_comparison": "PASS: shader, exact parameter key set, binary32 numeric values, texture resource paths, and original nongenerated attributes",
+  "verified_shader_parameters": 45376,
+  "semantic_mismatches": [],
+  "game_or_capture_process_started": false,
+  "native_compiler_only": true,
+  "base_game_textures_embedded_in_payload": false
+}

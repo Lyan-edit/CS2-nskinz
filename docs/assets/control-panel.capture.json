@@ -1,22 +1,27 @@
 {
-  "version": "0.7.6",
+  "version": "0.7.7",
   "method": "Unmodified D3D11 backbuffer PNG from the real MainWindow implementation; UiHarness --documentation",
   "example_configuration": "AK-47, Case Hardened, five identical Titan (Holo) stickers; slot 1 custom placement enabled at zero delta",
   "game_connected": false,
   "keyboard_events_injected": false,
   "width": 1384,
   "height": 1421,
-  "image_sha256": "7811b91f477eda200ae385b775df5e6819019ca5de23499de566c7cdc6ba36a2",
+  "image_sha256": "8786c30539b4a5284920cb5a96461e2ae7b336fc8bfd11aa3550835075b1db07",
   "source_sha256_lf": {
-    "src/UI/MainWindow.cpp": "cb93583b5482fd1acd468b1d501443ac7217a1b72e5d3db72c76a6d38569d703",
+    "src/UI/MainWindow.cpp": "b4217c07a2ea41e4131375fec8ccae0a15cf22c2cb8b7259c453c6a0d4df64ff",
     "src/UI/MainWindow.hpp": "55aa90f0f9500624a6525de69633bf8a4bb7f2e0cbf46969660e8cf552d7fe2d",
-    "src/UI/UiText.hpp": "f6b74cbee845ca5b5e01908e2458f1012999d1fed6889c697589f564aaf3e402",
+    "src/UI/UiText.hpp": "db96bde374c95e5d688b59c75cc39950c93c4871c1f5f8f6670ef5d0c6f2c4fb",
     "src/UI/KnifeFinishLabels.hpp": "a972cdd0ccbf8d6bd62cea0af543b8684309f1d92b4c39f90f3be8ff00af750f",
     "src/UI/WeaponPreviewGeometry.generated.hpp": "b93f6a6304a8761cab6598dc16cf98893b41762d98c088f411035580c73696d8",
     "src/UI/StickerPreviewPlacement.generated.hpp": "1893d18b71b42235eb8d8dd4da85d142966e602439b7c083179ea3810b596dca",
     "src/UI/StickerPreviewPlacement.generated.cpp": "9e882ca352f249f8d6726dc3bf03928d9f9876aadcf15673bfa70e001b3d837f",
     "src/UI/StickerPreviewMetrics.hpp": "3e76bedffd5f728d0de213c07680beca94045ae5d11f8f4d0630fce08f6e1fcf",
-    "tools/UiPanelHarness.cpp": "3432168c970e024ae3cc757757143a4298a7bd5ac2d0912b4b3974ef8b3ff71c",
-    "nSkinzCS2.UiHarness.vcxproj": "ff63428e5ce876c7f02402337511b888e2d11f15bbdee9b987685c9341b870be"
+    "tools/UiPanelHarness.cpp": "5f94bd15c50c57b2c98c2cbf59e906185b71c8a37befc7c24cb5796365240c95",
+    "nSkinzCS2.UiHarness.vcxproj": "eca3cb0372decca07ef47aa9a2b5f95567af20f38041b02bdee1bb4233e1fd5e",
+    "src/Core/Language.hpp": "e05f8bc201046fcdaf3cd2cfa013d8b8948c8ee38c649888013cc3f0488a38d9",
+    "src/Core/Preferences.hpp": "38bafeaafff01ed0be4601e42431f80b4671d4b797c3a517b777b392258fcad9",
+    "src/Core/Preferences.cpp": "f1c1337b88f3cf0e8b47e848bbcfa19a3e2d713237e1a7a213fadf3b7a32f7fd",
+    "src/UI/InputHandoff.hpp": "1926b695c837d72756f37587a9d126cef0aca18c0d25c0121b8bbc046f02099f",
+    "src/UI/InputHandoff.cpp": "ae55c668e6d4e8f1bd74da03161d5847426592a1119a66bed479ceb7fc8f5730"
   }
 }

@@ -131,6 +131,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Core\Config.cpp" />
+    <ClCompile Include="src\Core\Preferences.cpp" />
+    <ClCompile Include="src\UI\InputHandoff.cpp" />
     <ClCompile Include="src\Core\Log.cpp" />
     <ClCompile Include="src\Cs2\Catalog.cpp" />
     <ClCompile Include="src\Cs2\CatalogStore.cpp" />
@@ -161,10 +163,13 @@
     <ClCompile Include="src\Runtime\KnifeAppearance.cpp" />
     <ClCompile Include="src\Runtime\WeaponAppearance.cpp" />
     <ClCompile Include="src\Runtime\MapRemap.cpp" />
+    <ClCompile Include="src\Runtime\MapMaterials.cpp" />
     <ClCompile Include="src\Runtime\RadarAlphaFix.cpp" />
     <ClCompile Include="src\Runtime\RadarNativeCompiler.cpp" />
     <ClCompile Include="src\Runtime\WorkshopMaps.cpp" />
     <ClCompile Include="src\Tests\Main.cpp" />
+    <ClCompile Include="src\Tests\MaterialSettingsTests.cpp" />
+    <ClCompile Include="src\Tests\InputHandoffTests.cpp" />
     <ClCompile Include="src\Tests\LiveHotpatchTests.cpp" />
     <ClCompile Include="src\Tests\LiveExtrasTests.cpp" />
     <ClCompile Include="src\Tests\StabilityTests.cpp" />
@@ -180,6 +185,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\Resources\RadarReferences.rc" />
+    <ResourceCompile Include="src\Resources\MapMaterials.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

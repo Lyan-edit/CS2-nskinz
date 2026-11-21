@@ -15,6 +15,7 @@ PortRules ConvertRules(const model::ConfigDocument& config,
 #ifdef NSKINZCS2_TESTS
 int ProbeFrameStageIndexForTests(void** table,int preferred);
 bool ProbePlaybackDispatchForTests();
+bool ProbePausedPlaybackDispatchForTests();
 #endif
 void ConfigureEngineSettings(const model::ConfigDocument& config);
 bool NeedsKeychainReplay(const model::ConfigDocument* previous,const model::ConfigDocument& next);

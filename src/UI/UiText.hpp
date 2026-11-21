@@ -740,7 +740,7 @@ inline constexpr UiTextTable kChineseTexts {
 inline const char* Text(const UiTextId id) noexcept
 {
     const auto index = static_cast<std::size_t>(id);
-    return build::kUiLanguageChinese
+    return localization::IsChinese()
         ? detail::kChineseTexts[index]
         : detail::kEnglishTexts[index];
 }
@@ -753,7 +753,7 @@ inline const char* QualityDisplayName(const int id, const char* fallback) noexce
         "默认", "纯正", "经典", "特殊（★）", "独特", "社区", "开发者", "自制",
         "定制", "计数（StatTrak™）", "已完成", "阴森", "纪念品", "高光", "易变"
     };
-    return build::kUiLanguageChinese && id >= 0 && static_cast<std::size_t>(id) < chinese.size()
+    return localization::IsChinese() && id >= 0 && static_cast<std::size_t>(id) < chinese.size()
         ? chinese[static_cast<std::size_t>(id)] : fallback;
 }
 }

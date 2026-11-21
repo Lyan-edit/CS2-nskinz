@@ -285,11 +285,8 @@ constexpr std::array<PaintCompatibilitySeed, 6> kGlovePaintCompatibilitySeeds = 
 
 constexpr std::array<IdNameSeed, 8> kStickerKits = {
     IdNameSeed {0,
-#ifdef NSKINZCS2_UI_LANG_ZH_CN
-        "\xE6\x97\xA0"
-#else
         "None"
-#endif
+
     },
     IdNameSeed {3, "Crown (Foil)"},
     IdNameSeed {4, "Howling Dawn"},
@@ -316,11 +313,8 @@ constexpr std::array<IdNameSeed, 11> kQualities = {
 
 constexpr std::array<IdNameSeed, 1> kKeychainKits = {
     IdNameSeed {0,
-#ifdef NSKINZCS2_UI_LANG_ZH_CN
-        "\xE6\x97\xA0"
-#else
         "None"
-#endif
+
     },
 };
 
@@ -2127,7 +2121,7 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
 
     sticker_kits.emplace(
         0,
-        NamedId {0, nskinzcs2::build::kUiLanguageChinese ? "\xE6\x97\xA0" : "None"});
+        NamedId {0, nskinzcs2::localization::IsChinese() ? "\xE6\x97\xA0" : "None"});
     for (const auto& [sticker_kit_key, sticker_kit] : sticker_kits_section)
     {
         int id = 0;
@@ -2175,7 +2169,7 @@ std::optional<nskinzcs2::model::Catalog> nskinzcs2::CatalogBuilder::BuildCatalog
 
     keychain_kits.emplace(
         0,
-        NamedId {0, nskinzcs2::build::kUiLanguageChinese ? "\xE6\x97\xA0" : "None"});
+        NamedId {0, nskinzcs2::localization::IsChinese() ? "\xE6\x97\xA0" : "None"});
     std::unordered_map<std::string, const FlatSectionEntry*> keychains_by_name;
     for (const auto& [key, entry] : keychain_definitions_section)
     {

@@ -16,9 +16,10 @@ struct SmartApplyPlan
     int live_changes = 0;
     int rebuild_changes = 0;
     bool reload_map = false;
+    bool reload_materials = false;
     bool unknown_glove = false;
     bool NeedsCosmeticRewrite() const noexcept { return rebuild_changes > 0; }
-    bool NeedsDemo() const noexcept { return NeedsCosmeticRewrite() || reload_map; }
+    bool NeedsDemo() const noexcept { return NeedsCosmeticRewrite() || reload_map || reload_materials; }
 };
 
 SmartApplyPlan BuildSmartApplyPlan(
@@ -27,7 +28,7 @@ SmartApplyPlan BuildSmartApplyPlan(
     const std::unordered_map<std::uint64_t, GloveApplyCarrier>& gloves,
     const std::vector<model::KnifeProfile>& reconstructed_knives = {});
 
-enum class ApplyScope { WeaponFinish, Sticker, Knife, Glove, Keychain, Map };
+enum class ApplyScope { WeaponFinish, Sticker, Knife, Glove, Keychain, Map, MapMaterials };
 struct ApplyTarget
 {
     ApplyScope scope = ApplyScope::WeaponFinish;

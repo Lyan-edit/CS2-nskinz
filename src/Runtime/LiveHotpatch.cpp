@@ -1,3 +1,4 @@
+#include "Runtime/MapMaterials.hpp"
 // Runtime cosmetics adapter. Original component copyright and terms retained.
 // Imported implementation/copyright: third_party/live_cosmetics/LICENSE and NOTICE.md.
 #include "Runtime/LiveHotpatch.hpp"
@@ -82,7 +83,10 @@ bool ReadDemoContext(char* demo, std::size_t demo_size, char* level, std::size_t
 }
 
 void DispatchPlayback(int stage,int expected_stage,void(*execute)(const char*)) {
-    if(stage!=expected_stage || expected_stage<0)return;
+    // Paused Demos render frames but do not produce PostDataUpdate packets.
+    // ExecuteCommand queues text for the engine; it does not mutate entities.
+    if(stage<0 || (stage!=expected_stage && stage!=compatibility::kFrameStartStage &&
+        stage!=compatibility::kFrameRenderPassStage))return;
     std::string command;
     bool alpha=false;int percent=0;
     {std::unique_lock guard(command_mutex,std::try_to_lock);if(!guard.owns_lock())return;
@@ -411,6 +415,21 @@ bool ProbePlaybackDispatchForTests() {
     if(commands.size()!=2 || commands[0]!="cl_hud_radar_background_alpha 0.370000" || commands[1]!="playdemo \"nskinz_temp/charm.dem\"")return false;
     DispatchPlayback(4,4,execute);return commands.size()==2;
 }
+bool ProbePausedPlaybackDispatchForTests() {
+    static std::vector<std::string> commands;commands.clear();
+    const auto execute=+[](const char* command){commands.emplace_back(command);};
+    {std::lock_guard guard(command_mutex);pending_command="playdemo \"paused.dem\"";radar_alpha_pending=false;}
+    // A paused recording still renders frames, without PostDataUpdate packets.
+    DispatchPlayback(compatibility::kFrameStartStage,4,execute);
+    const bool dispatched=commands==std::vector<std::string>{"playdemo \"paused.dem\""};
+    {std::lock_guard guard(command_mutex);pending_command.clear();}
+    if (!dispatched) return false;
+    commands.clear();
+    {std::lock_guard guard(command_mutex);pending_command="playdemo \"paused-render.dem\"";}
+    DispatchPlayback(compatibility::kFrameRenderPassStage,-1,execute);
+    DispatchPlayback(compatibility::kFrameStartStage,-1,execute);
+    return commands==std::vector<std::string>{"playdemo \"paused-render.dem\""};
+}
 #endif
 
 bool IsPlaybackCommand(std::string_view command) noexcept {
@@ -444,6 +463,9 @@ void Run(AppState& state, HMODULE module, std::atomic_bool& stop, HANDLE refresh
     status.availability=runtime::Availability::MissingHook;
     status.detail=L"Settings are staged. Apply an individual item to activate. Charms reconstruct a Temporary Demo; Workshop map reloads are available.";
     std::optional<model::MapRemapProfile> configured_map;
+    std::optional<model::MapMaterialProfile> configured_materials;
+    bool materials_ready = true;
+    std::string last_material_report;
     std::wstring published_demo_path;
     AcquireSRWLockExclusive(&lifetime);app=&state;ReleaseSRWLockExclusive(&lifetime);
     while(!stop.load() && !state.ShutdownRequested()) {
@@ -481,11 +503,22 @@ void Run(AppState& state, HMODULE module, std::atomic_bool& stop, HANDLE refresh
                 }
             }
         }
+        if(refresh && installed) {
+            const auto document=state.SnapshotConfig();
+            if(!configured_materials || *configured_materials!=document.map_materials) {
+                materials_ready=runtime::ConfigureMapMaterials(document.map_materials);
+                if(materials_ready) configured_materials=document.map_materials; else configured_materials.reset();
+                std::wstring level;{std::lock_guard guard(report_mutex);level=report.level_name;}
+                const auto effective=document.map_remap.enabled ? document.map_remap.target_map_name : std::string(level.begin(),level.end());
+                runtime::SetMapMaterialContext(effective);
+                if(!materials_ready)Logger::Warn(runtime::SnapshotMapMaterials().issue);
+            }
+        }
         if(demo_command_event && WaitForSingleObject(demo_command_event,0)==WAIT_OBJECT_0) {
             std::ifstream input(directory/L"nSkinzCS2.demo-command.txt",std::ios::binary);
             std::string command;std::getline(input,command);
             if(!command.empty() && command.back()=='\r')command.pop_back();
-            if(installed && IsPlaybackCommand(command)) {
+            if(installed && materials_ready && IsPlaybackCommand(command)) {
                 std::lock_guard guard(command_mutex);pending_command=std::move(command);
             } else Logger::Warn(L"Hybrid Demo bridge rejected an unavailable or invalid playback request.");
         }
@@ -507,6 +540,16 @@ void Run(AppState& state, HMODULE module, std::atomic_bool& stop, HANDLE refresh
         status.map_remap_replacement_count=map_status.replacement_count;status.map_remap_suppressed_source_geometry_count=map_status.suppressed_source_geometry_count;
         status.map_remap_source=Wide(map_status.source_map_name);status.map_remap_target=Wide(map_status.target_map_name);
         status.map_remap_issue=map_status.issue;
+        const auto material=runtime::SnapshotMapMaterials();
+        const auto material_json=nlohmann::json({{"enabled",material.enabled},{"scene_matches",material.scene_matches},
+            {"map",material.map},{"file_count",material.file_count},{"requests",material.redirected_requests},
+            {"issue",std::string(material.issue.begin(),material.issue.end())}}).dump();
+        if(material_json!=last_material_report) {
+            const auto destination=directory/(L"nSkinzCS2.map-materials-"+std::to_wstring(GetCurrentProcessId())+L".json");
+            auto temporary=destination;temporary+=L".tmp";
+            {std::ofstream stream(temporary,std::ios::binary);stream<<material_json;}
+            if(MoveFileExW(temporary.c_str(),destination.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))last_material_report=material_json;
+        }
         state.UpdateStatus(status);
         runtime::PublishGloveApplyCarriers(directory,GetCurrentProcessId(),state.SnapshotGloveApplyCarriers());
         if(GetTickCount64()-models_published_at>=500) {

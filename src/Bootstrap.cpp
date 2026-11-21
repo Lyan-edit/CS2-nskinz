@@ -2,6 +2,7 @@
 #include "Core/AppState.hpp"
 #include "Core/BuildConfig.hpp"
 #include "Core/Config.hpp"
+#include "Core/Preferences.hpp"
 #include "Core/Log.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Cs2/CatalogStore.hpp"
@@ -442,7 +443,7 @@ std::optional<std::string> ReadTextFromVpk(
     return text;
 }
 
-std::optional<ResolvedCatalogText> TryResolveGameDataText()
+std::optional<ResolvedCatalogText> TryResolveGameDataText(const nskinzcs2::localization::Language language)
 {
     auto probe = ResolveCurrentProcessPath().parent_path();
     while (!probe.empty())
@@ -451,7 +452,7 @@ std::optional<ResolvedCatalogText> TryResolveGameDataText()
         const auto directory_vpk_path = content_root / L"pak01_dir.vpk";
         const auto items_game_path = content_root / L"scripts" / L"items" / L"items_game.txt";
         const auto localization_path =
-            content_root / L"resource" / nskinzcs2::build::kCatalogLocalizationFileName;
+            content_root / L"resource" / (language == nskinzcs2::localization::Language::Chinese ? L"csgo_schinese.txt" : L"csgo_english.txt");
         if (std::filesystem::exists(items_game_path) && std::filesystem::exists(localization_path))
         {
             const auto items_game_text = ReadFileText(items_game_path);
@@ -475,7 +476,7 @@ std::optional<ResolvedCatalogText> TryResolveGameDataText()
             const auto localization_text =
                 ReadTextFromVpk(
                     directory_vpk_path,
-                    std::string(nskinzcs2::build::kCatalogLocalizationVpkPath));
+                    (language == nskinzcs2::localization::Language::Chinese ? "resource/csgo_schinese.txt" : "resource/csgo_english.txt"));
             if (items_game_text.has_value() && localization_text.has_value())
             {
                 const auto inventory_icon_paths =
@@ -523,64 +524,28 @@ DWORD BootstrapThreadImpl(void* instance)
     nskinzcs2::Logger::Info(module_stream.str());
 
     g_state = std::make_unique<nskinzcs2::AppState>();
+    {std::ofstream status(g_base_directory/(L"nSkinzCS2.map-materials-"+std::to_wstring(GetCurrentProcessId())+L".json"));
+     status << "{\"enabled\":false,\"file_count\":0,\"requests\":0}";}
 
+
+    const auto preferences = nskinzcs2::LoadPreferences(g_base_directory);
     auto catalog = nskinzcs2::CatalogBuilder::BuildFallbackCatalog();
-    try
+    for (auto language : {nskinzcs2::localization::Language::Chinese, nskinzcs2::localization::Language::English})
     {
-        if (const auto game_data = TryResolveGameDataText(); game_data.has_value())
-        {
-            if (const auto parsed_catalog =
-                    nskinzcs2::CatalogBuilder::BuildCatalogFromGameText(
-                        game_data->items_game_text,
-                        game_data->localization_text,
-                        game_data->inventory_icon_paths_text);
-                parsed_catalog.has_value())
-            {
-                catalog = std::move(*parsed_catalog);
-                nskinzcs2::Logger::Info(L"Loaded catalog from local CS2 game files.");
-                nskinzcs2::Logger::Info(L"Catalog source: " + game_data->source_description);
-                std::wstringstream stream;
-                stream << L"Catalog counts: base=" << catalog.base_items.size()
-                    << L", knives=" << catalog.knife_items.size()
-                    << L", gloves=" << catalog.glove_items.size()
-                    << L", weapon paints=" << catalog.weapon_paint_kits.size()
-                    << L", glove paints=" << catalog.glove_paint_kits.size()
-                    << L", stickers=" << catalog.sticker_kits.size()
-                    << L", qualities=" << catalog.qualities.size() << L'.';
-                nskinzcs2::Logger::Info(stream.str());
-            }
-            else
-            {
-                nskinzcs2::Logger::Info(L"Failed to parse resolved local CS2 game data, continuing with fallback catalog.");
-            }
-        }
-        else
-        {
-            nskinzcs2::Logger::Info(L"Could not locate local CS2 game data, continuing with fallback catalog.");
-        }
+        nskinzcs2::localization::SetLanguage(language);
+        auto localized = nskinzcs2::CatalogBuilder::BuildFallbackCatalog();
+        try {
+            if (const auto data = TryResolveGameDataText(language))
+                if (auto parsed = nskinzcs2::CatalogBuilder::BuildCatalogFromGameText(
+                    data->items_game_text,data->localization_text,data->inventory_icon_paths_text))
+                    localized = std::move(*parsed);
+        } catch (...) { nskinzcs2::Logger::Warn(L"A localized catalog could not be built; fallback retained."); }
+        if (!nskinzcs2::CatalogStore::Save(g_base_directory / nskinzcs2::localization::CatalogFile(language),localized))
+            nskinzcs2::Logger::Warn(L"Could not export one localized catalog snapshot.");
+        if (language == preferences.language) catalog = std::move(localized);
     }
-    catch (const std::exception& exception)
-    {
-        (void)exception;
-        nskinzcs2::Logger::Warn(L"Catalog parsing raised a C++ exception; continuing with fallback catalog.");
-    }
-    catch (...)
-    {
-        nskinzcs2::Logger::Warn(L"Catalog parsing raised an unknown exception; continuing with fallback catalog.");
-    }
-
-    const auto catalog_snapshot_path = g_base_directory / L"nSkinzCS2.catalog.json";
-    if (nskinzcs2::CatalogStore::Save(catalog_snapshot_path, catalog))
-    {
-        nskinzcs2::Logger::Info(
-            L"Published isolated-UI catalog snapshot: " + catalog_snapshot_path.wstring());
-    }
-    else
-    {
-        nskinzcs2::Logger::Warn(
-            L"Could not publish the isolated-UI catalog snapshot; the external panel will use its fallback catalog.");
-    }
-
+    nskinzcs2::localization::SetLanguage(preferences.language);
+    nskinzcs2::CatalogStore::Save(g_base_directory / L"nSkinzCS2.catalog.json",catalog);
     g_state->ReplaceCatalog(std::move(catalog));
     if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
         g_state->ReplaceConfig({});

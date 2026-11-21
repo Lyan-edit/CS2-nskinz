@@ -1,0 +1,2 @@
+#include <Windows.h>
+500 RCDATA "../../assets/materials/waxed_reflection.nsm"

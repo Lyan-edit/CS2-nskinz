@@ -19,11 +19,17 @@ from audit_portable_dll import audit
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--english-dll", required=True, type=Path)
-    parser.add_argument("--chinese-dll", required=True, type=Path)
+    parser.add_argument("--dll", type=Path)
+    parser.add_argument("--english-dll", type=Path)
+    parser.add_argument("--chinese-dll", type=Path)
     parser.add_argument("--baseline-dll", type=Path)
     parser.add_argument("--report", required=True, type=Path)
     args = parser.parse_args()
+    if args.dll and (args.english_dll or args.chinese_dll):
+        parser.error("Use --dll or a historical language pair, not both")
+    if not args.dll and not (args.english_dll and args.chinese_dll):
+        parser.error("Provide --dll or both historical language DLLs")
+    dlls = (("bilingual", args.dll),) if args.dll else (("en", args.english_dll), ("zh", args.chinese_dll))
     root = Path(__file__).resolve().parents[1]
     tests = root / "build/portability-tests"
     probe = tests / "Loader/nSkinzCS2.LoadCheck.exe"
@@ -34,7 +40,7 @@ def main() -> int:
             raise FileNotFoundError(f"Build tools/PortabilityTests.vcxproj first: {path}")
     report = {
         "scope": "Local isolated loader + offscreen WARP tests; not a clean VM or HLAE gameplay test",
-        "audit": [audit(args.english_dll), audit(args.chinese_dll)], "tests": [],
+        "audit": [audit(dll) for _, dll in dlls], "tests": [],
     }
     # Preserve necessary Windows/user environment, but exclude every developer
     # directory from executable/DLL PATH lookup (deduplicate case-insensitively).
@@ -74,7 +80,7 @@ def main() -> int:
                 "input_sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "output": output})
             print(f"{'PASS' if passed else 'FAIL'}: {name} (exit {completed.returncode}, expected {expected})")
 
-        for language, dll in (("en", args.english_dll), ("zh", args.chinese_dll)):
+        for language, dll in dlls:
             run(f"{language}-hlae-loadlibrary", dll)
             run(f"{language}-system32-only", dll, system_only=True)
             run(f"{language}-incompatible-compiler", dll, compiler_stub=True)

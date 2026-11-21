@@ -1,3 +1,4 @@
+#include "Core/Preferences.hpp"
 #include "Core/BuildConfig.hpp"
 #include "UI/ExternalUiHost.hpp"
 
@@ -479,13 +480,20 @@ extern "C" __declspec(dllexport) void CALLBACK nSkinzUiHost(
         base_directory.wstring(),
         L"nSkinzCS2.ui.log");
     nskinzcs2::AppState state;
+    const auto preferences = nskinzcs2::LoadPreferences(base_directory);
+    nskinzcs2::localization::SetLanguage(preferences.language);
     if (const auto catalog = nskinzcs2::CatalogStore::Load(
-            base_directory / L"nSkinzCS2.catalog.json");
+            base_directory / nskinzcs2::localization::CatalogFile(preferences.language));
         catalog.has_value())
     {
         state.ReplaceCatalog(*catalog);
         nskinzcs2::Logger::Info(
             L"Loaded the complete catalog snapshot beside the nSkinzCS2 DLL.");
+    }
+    else if (auto catalog = nskinzcs2::CatalogStore::Load(base_directory / L"nSkinzCS2.catalog.json"))
+    {
+        state.ReplaceCatalog(std::move(*catalog));
+        nskinzcs2::Logger::Warn(L"Localized catalog unavailable; retaining the complete compatibility catalog.");
     }
     else
     {
