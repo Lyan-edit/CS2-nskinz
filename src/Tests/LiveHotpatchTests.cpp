@@ -14,6 +14,8 @@ void RunLiveExtrasTests();
 void RunLiveHotpatchTests() {
     using namespace nskinzcs2;
     Check(build::kLiveHotpatchTest,"test build flag must be enabled");
+    Check(live_test::ProbePausedPlaybackDispatchForTests(),"paused Demo reload must dispatch without network PostDataUpdate callbacks");
+    std::cout<<"paused_demo_reload_without_packets=PASS; frame_start_and_render_fallback=PASS; command_dispatched_once=PASS\n";
     // Captured 2026-11-18: demo 14192, client 14198, requested Sport 5030,
     // observed glove models 5031/5034/5035/4725/defaults. M9 508 is present.
     model::ConfigDocument gate_config;

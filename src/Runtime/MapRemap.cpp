@@ -5,6 +5,7 @@
 // see NOTICE.md.
 
 #include "Runtime/MapRemap.hpp"
+#include "Runtime/MapMaterials.hpp"
 
 #include "Core/Log.hpp"
 #include "Runtime/RadarNativeCompiler.hpp"
@@ -547,6 +548,13 @@ bool EndsWithPathInsensitive(const char* path, const char* suffix) noexcept
     return true;
 }
 
+bool ResolveMaterialOverlayPath(const char* request,char* output,std::size_t capacity) noexcept
+{
+    std::array<char,1024> safe {};
+    return CopyCString(request,safe.data(),safe.size()) &&
+        nskinzcs2::runtime::ResolveMapMaterialFile(safe.data(),output,capacity);
+}
+
 bool ResolveRadarOverviewPath(
     const char* requested_path,
     char* replacement,
@@ -619,8 +627,12 @@ void* __fastcall HookedFileSystemOpen(
     const char* path_id) noexcept
 {
     nskinzcs2::Logger::DeferredScope deferred_log;
-    std::array<char, 512> replacement {};
-    if (ResolveMapRuntimeDataPath(file_name, replacement.data(), replacement.size()))
+    std::array<char, 4096> replacement {};
+    if (ResolveMaterialOverlayPath(file_name,replacement.data(),replacement.size()))
+    {
+        file_name = replacement.data();
+    }
+    else if (ResolveMapRuntimeDataPath(file_name, replacement.data(), replacement.size()))
     {
         LogSourceRuntimeDataRedirect(L"RuntimeData/Open", file_name, replacement.data());
         file_name = replacement.data();
@@ -645,8 +657,12 @@ bool __fastcall HookedFileSystemReadFile(
     void* allocator) noexcept
 {
     nskinzcs2::Logger::DeferredScope deferred_log;
-    std::array<char, 512> replacement {};
-    if (ResolveMapRuntimeDataPath(file_name, replacement.data(), replacement.size()))
+    std::array<char, 4096> replacement {};
+    if (ResolveMaterialOverlayPath(file_name,replacement.data(),replacement.size()))
+    {
+        file_name = replacement.data();
+    }
+    else if (ResolveMapRuntimeDataPath(file_name, replacement.data(), replacement.size()))
     {
         LogSourceRuntimeDataRedirect(L"RuntimeData/ReadFile", file_name, replacement.data());
         file_name = replacement.data();
@@ -870,6 +886,7 @@ extern "C" void* __fastcall MapRemapHookCallback(
     {
     case MessageKind::DemoHeader:
     {
+        nskinzcs2::runtime::SetMapMaterialContext({});
         AcquireSRWLockExclusive(&g_config_lock);
         g_config.current_header_matched = false;
         ReleaseSRWLockExclusive(&g_config_lock);
@@ -893,6 +910,7 @@ extern "C" void* __fastcall MapRemapHookCallback(
                 std::array<char, 256> target {};
                 strcpy_s(target.data(), target.size(), g_config.target_map);
                 ReleaseSRWLockExclusive(&g_config_lock);
+                nskinzcs2::runtime::SetMapMaterialContext(matches && target[0] ? target.data() : current.data());
                 const bool changed = matches && target[0] != '\0' &&
                     std::strcmp(current.data(), target.data()) != 0 &&
                     TryAssignUtlString(map_object, target.data());
@@ -1991,6 +2009,24 @@ bool nskinzcs2::runtime::ShouldSuppressSourceMapModelPath(
     }
 }
 
+bool nskinzcs2::runtime::ArmMapMaterialFileLoading(const std::filesystem::path& root, std::wstring& issue)
+{
+    if (!root.is_absolute() || !EnsureHooksInstalled())
+    {
+        issue = L"Map material loader hooks are unavailable; the current CS2 signatures must match.";
+        return false;
+    }
+    const auto utf8 = WideToUtf8(root.wstring());
+    if (utf8.empty() || utf8.size() >= 4096)
+    {
+        issue = L"The material cache path is invalid or too long.";
+        return false;
+    }
+    // Absolute redirects are resolved only for the active map. Do not mount
+    // these original virtual paths into GAME: they would affect other maps.
+    return true;
+}
+
 void nskinzcs2::runtime::ConfigureMapRemap(
     const nskinzcs2::model::MapRemapProfile& profile,
     const std::wstring& current_level_name)
@@ -2108,6 +2144,7 @@ nskinzcs2::runtime::MapRemapStatus nskinzcs2::runtime::SnapshotMapRemapStatus()
 
 void nskinzcs2::runtime::ShutdownMapRemap()
 {
+    StopMapMaterials();
     std::lock_guard<std::mutex> lock(g_install_mutex);
     UnmountRadarOverlay();
     RollbackHooks();

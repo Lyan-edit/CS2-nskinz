@@ -3,6 +3,7 @@
 #include "Core/AppState.hpp"
 #include "Core/Config.hpp"
 #include "Core/Log.hpp"
+#include "Core/Preferences.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Cs2/CatalogStore.hpp"
 #include "UI/MainWindow.hpp"
@@ -14,6 +15,7 @@
 #include <wrl/client.h>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <string_view>
 #include <thread>
@@ -30,6 +32,7 @@ std::atomic_bool fault_triggered {false}, retry_triggered {false};
 bool documentation_capture = false;
 bool keychain_capture = false;
 bool missing_xuid_capture = false;
+bool settings_capture = false, materials_capture = false, switch_language = false;
 int finish_capture = 0;
 bool occlusion_probe = false;
 bool resize_probe = false;
@@ -104,6 +107,13 @@ bool UiPreviewMissingXuidCapture()
 }
 
 int UiPreviewFinishCapture() { return finish_capture; }
+bool UiPreviewSettingsCapture() { return settings_capture; }
+bool UiPreviewMaterialsCapture() { return materials_capture; }
+bool UiPreviewSwitchLanguage()
+{
+    static int frames = 0;
+    return switch_language && ++frames == 2;
+}
 
 HRESULT PresentUiPreview(IDXGISwapChain* chain)
 {
@@ -160,6 +170,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     documentation_capture = arguments.find(L"--documentation") != std::wstring_view::npos;
     keychain_capture = arguments.find(L"--keychain") != std::wstring_view::npos;
     missing_xuid_capture = arguments.find(L"--missing-xuid") != std::wstring_view::npos;
+    settings_capture = arguments.find(L"--settings") != std::wstring_view::npos;
+    materials_capture = arguments.find(L"--materials") != std::wstring_view::npos;
+    switch_language = arguments.find(L"--switch-to-en") != std::wstring_view::npos;
+    const bool english = arguments.find(L"--english") != std::wstring_view::npos;
     if (arguments.find(L"--knife-finish") != std::wstring_view::npos) finish_capture = 1;
     if (arguments.find(L"--glove-finish") != std::wstring_view::npos) finish_capture = 2;
     if (arguments.find(L"--unknown-model") != std::wstring_view::npos) finish_capture = 3;
@@ -178,13 +192,33 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int)
     if (length == 0 || length >= image.size()) return 1;
     image.resize(length);
     const auto directory = std::filesystem::path(image).parent_path();
-    capture_path = directory / (live_knife_model ? L"live-knife-model.png" : live_default_glove ? L"live-default-glove.png" : gamma_finish ? L"gamma-finish.png" : finish_capture == 1 ? L"knife-finish.png" :
+    if (arguments.find(L"--export-catalogs") != std::wstring_view::npos)
+    {
+        using namespace nskinzcs2;
+        const char* vpk = std::getenv("NSKINZCS2_REAL_GAME_VPK");
+        if (!vpk) return 4;
+        for (auto language : {localization::Language::Chinese, localization::Language::English})
+        {
+            localization::SetLanguage(language);
+            const auto catalog = CatalogBuilder::BuildCatalogFromGameFiles(directory / L"items_game.txt",
+                directory / (language == localization::Language::Chinese ? L"csgo_schinese.txt" : L"csgo_english.txt"),
+                std::filesystem::path(vpk));
+            if (!catalog || !CatalogStore::Save(directory / localization::CatalogFile(language), *catalog)) return 4;
+        }
+        return 0;
+    }
+    nskinzcs2::SavePreferences(directory, {english ? nskinzcs2::localization::Language::English : nskinzcs2::localization::Language::Chinese});
+    nskinzcs2::localization::SetLanguage(english ? nskinzcs2::localization::Language::English : nskinzcs2::localization::Language::Chinese);
+    capture_path = directory / (settings_capture ? (switch_language ? L"settings-switch-en.png" : english ? L"settings-en.png" : L"settings-zh.png") :
+        materials_capture ? (english ? L"materials-en.png" : L"materials-zh.png") :
+        live_knife_model ? L"live-knife-model.png" : live_default_glove ? L"live-default-glove.png" : gamma_finish ? L"gamma-finish.png" : finish_capture == 1 ? L"knife-finish.png" :
         finish_capture == 2 ? L"glove-finish.png" : finish_capture == 3 ? L"unknown-model.png" :
         missing_xuid_capture ? L"missing-xuid-notice.png" :
         keychain_capture ? L"keychain-panel.png" : L"control-panel.png");
     nskinzcs2::Logger::Initialize(directory.wstring(), L"nSkinzCS2.preview.log");
     nskinzcs2::AppState state;
-    const auto catalog = nskinzcs2::CatalogStore::Load(directory / L"nSkinzCS2.catalog.json");
+    const auto catalog = nskinzcs2::CatalogStore::Load(directory / nskinzcs2::localization::CatalogFile(
+        english ? nskinzcs2::localization::Language::English : nskinzcs2::localization::Language::Chinese));
     state.ReplaceCatalog(catalog.value_or(nskinzcs2::CatalogBuilder::BuildFallbackCatalog()));
     auto config = nskinzcs2::ConfigStore::CreateDefault();
     config.profiles[0].base_item = 7;

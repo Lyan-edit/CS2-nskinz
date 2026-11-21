@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the two portable nSkinz release DLLs and CS2 Chinese catalog data."""
+"""Validate a bilingual portable nSkinz DLL (or historical language pair)."""
 
 from __future__ import annotations
 
@@ -128,19 +128,29 @@ def require(condition: bool, message: str) -> None:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--english-dll", required=True, type=Path)
-    parser.add_argument("--chinese-dll", required=True, type=Path)
+    parser.add_argument("--dll", type=Path, help="Single DLL with runtime language selection")
+    parser.add_argument("--english-dll", type=Path)
+    parser.add_argument("--chinese-dll", type=Path)
     parser.add_argument("--vpk", required=True, type=Path)
     args = parser.parse_args()
+    if args.dll and (args.english_dll or args.chinese_dll):
+        parser.error("Use --dll or a historical language pair, not both")
+    if not args.dll and not (args.english_dll and args.chinese_dll):
+        parser.error("Provide --dll or both historical language DLLs")
+    dlls = (args.dll,) if args.dll else (args.english_dll, args.chinese_dll)
 
-    for dll in (args.english_dll, args.chinese_dll):
+    for dll in dlls:
         result = audit(dll)
         print(f"{dll.name}: x64 portable imports passed: {', '.join(result['imports'])}")
 
-    english = args.english_dll.read_bytes()
-    chinese = args.chinese_dll.read_bytes()
-    require(b"resource/csgo_english.txt" in english, "English DLL does not select csgo_english.txt")
-    require(b"resource/csgo_schinese.txt" in chinese, "Chinese DLL does not select csgo_schinese.txt")
+    english = (args.dll or args.english_dll).read_bytes()
+    chinese = (args.dll or args.chinese_dll).read_bytes()
+    require(b"csgo_english.txt" in english, "English catalog selector missing")
+    require(b"csgo_schinese.txt" in chinese, "Chinese catalog selector missing")
+    if args.dll:
+        require(b"nSkinzCS2.settings.json" in chinese or "nSkinzCS2.settings.json".encode("utf-16-le") in chinese,
+                "Single DLL preference storage is missing")
+        require(b"NSKMAT01" in chinese, "Embedded material payload missing")
     ui_samples = ["枪械", "刀", "手套", "挂件", "原皮（无涂装）", "更新", "保存", "加载"]
     missing_ui = [text for text in ui_samples if text.encode("utf-8") not in chinese]
     require(not missing_ui, f"Chinese DLL is missing UI strings: {missing_ui}")

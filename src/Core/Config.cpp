@@ -519,6 +519,7 @@ static void to_json(json& j, const ConfigDocument& value)
         {"glove_profiles", value.glove_profiles},
         {"keychain_profiles", value.keychain_profiles},
         {"map_remap", value.map_remap},
+        {"map_materials", {{"enabled",value.map_materials.enabled},{"map",value.map_materials.map}}},
         {"experimental_allow_hud_alias_synthetic_proxy_model_write", value.experimental_allow_hud_alias_synthetic_proxy_model_write},
     };
 }
@@ -531,6 +532,9 @@ static void from_json(const json& j, ConfigDocument& value)
     value.glove_profiles = j.value("glove_profiles", std::vector<GloveProfile> {});
     value.keychain_profiles = j.value("keychain_profiles", std::vector<KeychainProfile> {});
     value.map_remap = j.value("map_remap", MapRemapProfile {});
+    const auto materials = j.value("map_materials",json::object());
+    value.map_materials.enabled = materials.value("enabled",false);
+    value.map_materials.map = materials.value("map",std::string("de_mirage"));
     value.experimental_allow_hud_alias_synthetic_proxy_model_write =
         j.value("experimental_allow_hud_alias_synthetic_proxy_model_write", false);
 }
@@ -942,6 +946,7 @@ nskinzcs2::SmartApplyPlan nskinzcs2::BuildSmartApplyPlan(
         old_map.erase(field);
     }
     result.reload_map = (current.map_remap.enabled || (previous && previous->map_remap.enabled)) && map != old_map;
+    result.reload_materials = current.map_materials != (previous ? previous->map_materials : model::MapMaterialProfile {});
     if constexpr(build::kLiveHotpatchTest) {
         result.rewrite_config = {};
         result.rewrite_config.keychain_profiles = current.keychain_profiles;
@@ -1087,6 +1092,7 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
             [&](const auto& p) { return p.xuid == value.xuid && p.base_item == value.base_item; });
         rebuild = true;
     }
+    else if (target.scope == ApplyScope::MapMaterials) merged.map_materials = staged.map_materials;
     else merged.map_remap = staged.map_remap;
 
     static_cast<SmartApplyPlan&>(result) = BuildSmartApplyPlan(&applied, merged, carriers, reconstructed_knives);
@@ -1131,6 +1137,8 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
         result.live_changes = target.scope != ApplyScope::Keychain && target.scope != ApplyScope::Map ? 1 : 0;
         result.rebuild_changes = target.scope == ApplyScope::Keychain ? 1 : 0;
         result.reload_map = target.scope == ApplyScope::Map;
+        result.reload_materials = target.scope == ApplyScope::MapMaterials;
+        if (result.reload_materials) result.live_changes = 0;
     }
     return result;
 }

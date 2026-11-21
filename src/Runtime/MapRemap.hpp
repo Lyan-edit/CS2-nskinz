@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <filesystem>
 
 namespace nskinzcs2::runtime
 {
@@ -82,5 +83,8 @@ void ConfigureMapRemap(
     const nskinzcs2::model::MapRemapProfile& profile,
     const std::wstring& current_level_name = {});
 MapRemapStatus SnapshotMapRemapStatus();
+// Independent material overlay lifetime. It shares the established file-hook
+// dispatcher, without enabling Workshop replacement or requiring a Workshop ID.
+bool ArmMapMaterialFileLoading(const std::filesystem::path& root, std::wstring& issue);
 void ShutdownMapRemap();
 }

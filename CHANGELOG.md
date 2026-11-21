@@ -1,5 +1,17 @@
 # Changelog / 更新记录
 
+## [0.7.7] - 2026-11-21
+
+- Add independently applied, embedded waxed-reflection materials for eight maps: 1,450 verified resources, isolated cache reuse/repair and matched-map redirects.
+- 新增八地图内嵌打蜡反光材质独立应用，保留其它编辑暂存，无需另下 VPK；1450 项材质与缓存校验修复。
+- Ship one Chinese/English DLL with instant persistent language switching and unchanged item identities; retain the existing UI style and layout.
+- 改为一个中英文共用 DLL，设置中即时切换并保存，默认中文，不触发饰品应用。
+- Dispatch Demo reload requests during paused render frames, and return input/focus when closing the external panel or handing off an F8 press.
+- 修复暂停重载等待和 F8 输入交接，材质区明确区分实际应用与暂存状态，ReShade 独立控制。
+- Preserve live cosmetic/HUD/holder routes, charm reconstruction, maps and fixed radars. Refresh release artwork, native panel capture, source and checksums.
+
+See [release notes](docs/releases/v0.7.7.md).
+
 ## [0.7.6] - 2026-11-21
 
 - Route guns, all knife/glove modes including default T/CT gloves, and five sticker slots through live changes; retain current-holder targeting and right-side HUD synchronization.

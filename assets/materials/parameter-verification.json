@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "materials": 1450,
+  "shader_counts": {
+    "csgo_environment_blend.vfx": 223,
+    "csgo_environment.vfx": 138,
+    "csgo_complex.vfx": 314,
+    "csgo_vertexlitgeneric.vfx": 548,
+    "csgo_lightmappedgeneric.vfx": 227
+  },
+  "dependency_count": 1962,
+  "compiler_texture_bytes": 2860142397,
+  "parameter_comparison": "Every original shader parameter is present and equal; numeric comparison uses binary32 representation.",
+  "verified_materials": 1450,
+  "verified_parameter_count": 45376,
+  "mismatches": [],
+  "duration_seconds": 181.926,
+  "compiler_sha256": "7465f15d8e83ef244f69deab3a79625acfeafb2fcaa8c90fbbfa0b28b9be7fc8",
+  "vrf_sha256": "ef9f6fb3943c30b73f0991bce6654128727b0807968f7997a6bb014efbec8830",
+  "base_vpk_sha256": "7db4d2f43e24cda87887a8acce37d967464c92421e15d297aa1b8c749222432c"
+}

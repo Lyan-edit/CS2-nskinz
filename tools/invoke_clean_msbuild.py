@@ -29,6 +29,7 @@ def main() -> int:
     parser.add_argument("--solution", required=True)
     parser.add_argument("--configuration", default="Release")
     parser.add_argument("--platform", default="x64")
+    parser.add_argument("--incremental", action="store_true", help="Build changed inputs instead of rebuilding all sources")
     parser.add_argument("--stdout-log", required=True)
     parser.add_argument("--stderr-log", required=True)
     parser.add_argument(
@@ -45,7 +46,7 @@ def main() -> int:
     command = [
         arguments.msbuild,
         str(solution),
-        "/t:Rebuild",
+        "/t:Build" if arguments.incremental else "/t:Rebuild",
         f"/p:Configuration={arguments.configuration}",
         f"/p:Platform={arguments.platform}",
         "/m:1",

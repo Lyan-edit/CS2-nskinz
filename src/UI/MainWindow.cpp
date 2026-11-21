@@ -1,13 +1,19 @@
 #include "UI/MainWindow.hpp"
 
 #include "Core/BuildConfig.hpp"
+#include "Core/Preferences.hpp"
+#include "Cs2/CatalogStore.hpp"
 #include "Core/Config.hpp"
 #include "Core/Log.hpp"
 #include "Cs2/Catalog.hpp"
 #include "Runtime/DemoSkinRewrite.hpp"
 #include "Runtime/LiveHotpatch.hpp"
 #include "Runtime/WorkshopMaps.hpp"
+#include "Runtime/MapMaterials.hpp"
+#include "json.hpp"
+#include <fstream>
 #include "UI/ExternalUiHost.hpp"
+#include "UI/InputHandoff.hpp"
 #include "UI/StickerPreviewMetrics.hpp"
 #include "UI/KeychainPreview.hpp"
 #include "UI/KnifeFinishLabels.hpp"
@@ -58,6 +64,9 @@ bool UiPreviewRetryAfterFailure();
 bool UiPreviewDocumentationCapture();
 bool UiPreviewKeychainCapture();
 bool UiPreviewMissingXuidCapture();
+bool UiPreviewSettingsCapture();
+bool UiPreviewMaterialsCapture();
+bool UiPreviewSwitchLanguage();
 int UiPreviewFinishCapture();
 #endif
 
@@ -1177,6 +1186,8 @@ public:
         , external_runtime_process_id_(external_runtime_process_id)
     {
         state_.SetWindowVisible(false);
+        preferences_ = nskinzcs2::LoadPreferences(config_path_.parent_path());
+        nskinzcs2::localization::SetLanguage(preferences_.language);
         working_config_ = state_.SnapshotConfig();
         if (working_config_.profiles.empty())
         {
@@ -1354,11 +1365,6 @@ private:
     {
         auto& io = ImGui::GetIO();
         io.Fonts->AddFontDefault();
-
-        if (!nskinzcs2::build::kUiLanguageChinese)
-        {
-            return;
-        }
 
         const auto font_path = ResolveChineseUiFontPath();
         if (!font_path.has_value())
@@ -1570,7 +1576,8 @@ private:
 #ifdef NSKINZCS2_UI_CAPTURE
                 ShowWindow(hwnd_, SW_HIDE);
 #else
-                ShowWindow(hwnd_, new_visibility ? SW_SHOW : SW_HIDE);
+                if (new_visibility) ShowWindow(hwnd_, SW_SHOW);
+                else nskinzcs2::ui::HidePanelAndReturnInput(hwnd_, external_runtime_process_id_);
                 if (new_visibility)
                 {
                     SetForegroundWindow(hwnd_);
@@ -1748,7 +1755,7 @@ private:
             it->second = nskinzcs2::BuildScopedFinishOptions(catalog, nskinzcs2::ApplyScope::Knife, definition);
             for (auto& paint : it->second)
                 paint.name = nskinzcs2::ui::KnifeFinishDisplayName(
-                    paint.id, paint.name, nskinzcs2::build::kUiLanguageChinese);
+                    paint.id, paint.name, nskinzcs2::localization::IsChinese());
         }
         return it->second;
     }
@@ -1807,6 +1814,7 @@ private:
         const auto catalog_snapshot = state_.SnapshotCatalogShared();
         const auto& catalog = *catalog_snapshot;
         EnsureCatalogUiCache(catalog_snapshot);
+        PollMaterialPreparation(catalog);
         const auto model_now = GetTickCount64();
         if (model_now - model_carriers_refreshed_ >= 500)
         {
@@ -1847,12 +1855,12 @@ private:
             return;
         }
 
-        ImGui::BeginDisabled(demo_skin_rewrite_future_.valid() || smart_apply_capture_pending_);
+        ImGui::BeginDisabled(demo_skin_rewrite_future_.valid() || smart_apply_capture_pending_ || material_preparation_.valid());
         ImGui::TextUnformatted(Ui(UiTextId::AppTitle));
         ImGui::SameLine();
         ImGui::TextDisabled("%s", nskinzcs2::build::kLiveHotpatchTest ? "LIVE HOTPATCH" : Ui(UiTextId::AppSubtitle));
         if constexpr (nskinzcs2::build::kLiveHotpatchTest) {
-            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "枪械、刀、默认 T/CT 手套与五槽贴纸使用热修；挂件使用临时 Demo 重建，创意工坊换图已恢复。保存的配置仅供编辑，每个应用按钮只提交当前项。" : "Weapons, knives, stock gloves and five stickers apply live. Charms use Temporary Demos; Workshop maps are restored. Saved settings remain staged until each item is applied.");
+            ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese() ? "枪械、刀、默认 T/CT 手套与五槽贴纸使用热修；挂件使用临时 Demo 重建，创意工坊换图已恢复。保存的配置仅供编辑，每个应用按钮只提交当前项。" : "Weapons, knives, stock gloves and five stickers apply live. Charms use Temporary Demos; Workshop maps are restored. Saved settings remain staged until each item is applied.");
         }
         ImGui::Separator();
 
@@ -1948,9 +1956,15 @@ private:
                 ImGui::EndTabItem();
             }
 
-            if (ImGui::BeginTabItem(Ui(UiTextId::TabMaps)))
+            ImGuiTabItemFlags map_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewMaterialsCapture()) map_tab_flags = ImGuiTabItemFlags_SetSelected;
+#endif
+            if (ImGui::BeginTabItem(Ui(UiTextId::TabMaps), nullptr, map_tab_flags))
             {
                 DrawMapRemapEditor(catalog, status);
+                ImGui::Separator();
+                DrawMapMaterialEditor(catalog);
                 ImGui::EndTabItem();
             }
 
@@ -1964,6 +1978,15 @@ private:
                 ImGui::EndTabItem();
             }
 
+            ImGuiTabItemFlags settings_tab_flags = ImGuiTabItemFlags_None;
+#ifdef NSKINZCS2_UI_CAPTURE
+            if (UiPreviewSettingsCapture()) settings_tab_flags = ImGuiTabItemFlags_SetSelected;
+#endif
+            if (ImGui::BeginTabItem(nskinzcs2::localization::IsChinese() ? "设置###Settings" : "Settings###Settings", nullptr, settings_tab_flags))
+            {
+                DrawSettings();
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
         }
 
@@ -2143,6 +2166,135 @@ private:
             selected_profile_ = std::clamp(selected_profile_, 0, static_cast<int>(profiles.size()) - 1);
             PushWorkingConfig();
         }
+    }
+
+    void PollMaterialPreparation(const Catalog& catalog)
+    {
+        if (!material_preparation_.valid() ||
+            material_preparation_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        try {
+            const auto prepared = material_preparation_.get();
+            if (!prepared.success) { material_issue_ = Narrow(prepared.issue); return; }
+            material_issue_.clear();
+            working_config_.map_materials = pending_material_profile_;
+            StartScopedApply(catalog,{nskinzcs2::ApplyScope::MapMaterials});
+        } catch (const std::exception& error) { material_issue_ = error.what(); }
+    }
+
+    void DrawMapMaterialEditor(const Catalog& catalog)
+    {
+        const bool chinese = nskinzcs2::localization::IsChinese();
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewMaterialsCapture()) ImGui::SetScrollHereY(0.0f);
+#endif
+        if (!ImGui::CollapsingHeader(chinese ? "地图材质：打蜡反光###WaxedMaterials" : "Map materials: waxed reflection###WaxedMaterials",
+            ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (external_runtime_process_id_ && GetTickCount64()-material_status_refreshed_>=1000) {
+            material_status_refreshed_=GetTickCount64();
+            try {
+                const auto file=config_path_.parent_path()/(L"nSkinzCS2.map-materials-"+std::to_wstring(external_runtime_process_id_)+L".json");
+                std::error_code error;const auto size=std::filesystem::file_size(file,error);
+                if (!error && size<=8192) {std::ifstream stream(file);material_status_=nlohmann::json::parse(stream);}
+            } catch (...) {material_status_=nlohmann::json::object();}
+        }
+        bool applied = false, matching = false;
+        try {applied=material_status_.value("enabled",false);matching=material_status_.value("scene_matches",false);} catch (...) {}
+        ImGui::TextUnformatted(chinese
+            ? (applied ? (matching ? "DLL 材质重定向：已启用，当前地图匹配" : "DLL 材质重定向：等待匹配地图") : "DLL 材质重定向：已关闭（仅勾选不代表已应用）")
+            : (applied ? (matching ? "DLL material redirects: enabled on this map" : "DLL material redirects: waiting for matching map") : "DLL material redirects: off (editor checkbox is staged only)"));
+        ImGui::TextWrapped("%s",chinese
+            ? "ReShade 效果独立控制。收起面板后快捷键交还游戏；面板收到 F8 时也会交还游戏输入。关闭 DLL 材质后仍需重载/重启清除已加载材质，才能对比。"
+            : "ReShade effects are independent. Closing the panel returns game input; F8 received by the panel also hands input back. After disabling DLL materials, reload/restart to clear loaded resources before comparing.");
+        auto& profile = working_config_.map_materials;
+        ImGui::TextWrapped("%s", chinese
+            ? "内置材质包，无需另外下载 VPK。此项单独应用并重载当前 Demo，不提交其它暂存饰品。"
+            : "Built-in material pack; no separate VPK download. Apply only this item and reload the current Demo.");
+        if (ImGui::Checkbox(chinese ? "启用打蜡反光###EnableWaxed" : "Enable waxed reflection###EnableWaxed",&profile.enabled)) PushWorkingConfig();
+        if (ImGui::BeginCombo(chinese ? "基准地图###MaterialMap" : "Base map###MaterialMap",profile.map.c_str())) {
+            for (auto map : nskinzcs2::runtime::kMaterialMaps) {
+                if (ImGui::Selectable(map.data(),profile.map==map)) {profile.map=map;PushWorkingConfig();}
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::TextWrapped("%s",chinese
+            ? "仅覆盖匹配地图的已收录材质。Mirage Water / Inferno Water 按对应基准启用；其它工坊版本不会自动套用。"
+            : "Only cataloged materials on matching maps are overridden. Mirage Water / Inferno Water use their base map; other Workshop variants are not auto-enabled.");
+        const float width=std::max(100.0f,(ImGui::GetContentRegionAvail().x-ImGui::GetStyle().ItemSpacing.x)*0.5f);
+        if (ImGui::Button(chinese ? "独立应用并重载 Demo###ApplyWaxed" : "Apply materials and reload Demo###ApplyWaxed",ImVec2(width,30))) {
+            if (!profile.enabled) StartScopedApply(catalog,{nskinzcs2::ApplyScope::MapMaterials});
+            else {
+                pending_material_profile_=profile;
+                material_issue_.clear();
+                material_preparation_=std::async(std::launch::async,[map=profile.map]{return nskinzcs2::runtime::PrepareMapMaterials(map);});
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(chinese ? "恢复原材质并重载###RestoreMaterials" : "Restore materials and reload###RestoreMaterials",ImVec2(width,30))) {
+            profile.enabled=false;PushWorkingConfig();material_issue_.clear();
+            StartScopedApply(catalog,{nskinzcs2::ApplyScope::MapMaterials});
+        }
+        if (material_preparation_.valid())
+            ImGui::TextUnformatted(chinese ? "正在校验并准备内置材质……" : "Verifying and preparing built-in materials...");
+        if (!material_issue_.empty()) ImGui::TextWrapped("%s",material_issue_.c_str());
+        if (!demo_skin_rewrite_result_.detail.empty())
+            ImGui::TextWrapped("%s",Narrow(demo_skin_rewrite_result_.detail).c_str());
+        ImGui::TextWrapped("%s",chinese
+            ? "需要重载才会重新读取材质。已加载资源仍有缓存时，请完整重启并在首次载图前应用。反光的 GPU 开销取决于场景。"
+            : "Reload is required. If resources remain cached, restart and apply before the first map load. Reflection GPU cost depends on the scene.");
+        if (ImGui::TreeNode(chinese ? "材质状态###MaterialStatus" : "Material status###MaterialStatus")) {
+            try {
+                ImGui::Text(chinese ? "已准备材质：%llu　资源请求命中：%llu" : "Prepared: %llu  redirected requests: %llu",
+                    static_cast<unsigned long long>(material_status_.value("file_count",std::uint64_t(0))),
+                    static_cast<unsigned long long>(material_status_.value("requests",std::uint64_t(0))));
+                ImGui::TextWrapped("%s",material_status_.value("issue",std::string {}).c_str());
+            } catch (...) {}
+            ImGui::TreePop();
+        }
+    }
+
+    void ChangeLanguage(nskinzcs2::localization::Language language)
+    {
+        preferences_.language = language;
+        nskinzcs2::localization::SetLanguage(language);
+        preferences_saved_ = nskinzcs2::SavePreferences(config_path_.parent_path(), preferences_);
+        const auto file = config_path_.parent_path() / nskinzcs2::localization::CatalogFile(language);
+        if (auto localized = nskinzcs2::CatalogStore::Load(file))
+        {
+            state_.ReplaceCatalog(std::move(*localized));
+            language_catalog_ready_ = true;
+        }
+        else language_catalog_ready_ = false;
+    }
+
+    void DrawSettings()
+    {
+#ifdef NSKINZCS2_UI_CAPTURE
+        if (UiPreviewSwitchLanguage()) ChangeLanguage(nskinzcs2::localization::Language::English);
+#endif
+        const bool chinese = nskinzcs2::localization::IsChinese();
+        ImGui::TextUnformatted(chinese ? "界面与语言" : "Interface and language");
+        ImGui::Separator();
+        int language = chinese ? 0 : 1;
+        if (ImGui::Combo("语言 / Language###UiLanguage", &language, "简体中文\0English\0"))
+        {
+            ChangeLanguage(language == 0 ? nskinzcs2::localization::Language::Chinese
+                                        : nskinzcs2::localization::Language::English);
+        }
+        ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese()
+            ? "切换即时生效并自动保存。仅改变界面与目录名称，不应用或修改饰品配置。"
+            : "Changes apply immediately and are saved automatically. Language does not apply or modify cosmetic settings.");
+        if (!preferences_saved_)
+            ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese()
+                ? "语言已切换，但偏好设置未能保存。请检查 DLL 目录写入权限。"
+                : "Language changed, but preferences could not be saved. Check the DLL folder write permissions.");
+        if (!language_catalog_ready_)
+            ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese()
+                ? "当前语言的目录尚未就绪，物品名称暂沿用已加载目录。请等待 DLL 导出本机目录后重开面板。"
+                : "The localized catalog is not ready; existing item names are retained. Reopen the panel after the DLL exports local catalogs.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", nskinzcs2::localization::IsChinese()
+            ? "默认语言：简体中文。一个 DLL 同时包含两种界面语言。"
+            : "Default: Simplified Chinese. Both languages are included in this DLL.");
     }
 
     void DrawProfileEditor(const Catalog& catalog)
@@ -2337,7 +2489,7 @@ private:
             }
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeTargetVanillaHint));
             if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
-                if(ImGui::Checkbox(nskinzcs2::build::kUiLanguageChinese ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",&profile.live_test_allow_old_demo_models)) PushWorkingConfig();
+                if(ImGui::Checkbox(nskinzcs2::localization::IsChinese() ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",&profile.live_test_allow_old_demo_models)) PushWorkingConfig();
             }
         }
 
@@ -2368,7 +2520,7 @@ private:
             blocked_knife_preview = std::string(Ui(UiTextId::WeaponPaintBlocked)) + " " +
                 nskinzcs2::ui::KnifeFinishDisplayName(profile.paint_kit,
                     found != catalog.weapon_paint_kits.end() ? found->name : std::string {},
-                    nskinzcs2::build::kUiLanguageChinese) +
+                    nskinzcs2::localization::IsChinese()) +
                 " (" + std::to_string(profile.paint_kit) + ")";
         }
         ImGui::BeginDisabled(current_model <= 0);
@@ -2430,7 +2582,7 @@ private:
             ImGui::TextWrapped("%s", Ui(UiTextId::KnifeModelRequired));
         }
         else if (nskinzcs2::build::kLiveHotpatchTest) {
-            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "点击智能应用实时修改刀型／饰面；不生成临时 Demo。" : "Smart Apply changes this knife live; no Temporary Demo.");
+            ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese() ? "点击智能应用实时修改刀型／饰面；不生成临时 Demo。" : "Smart Apply changes this knife live; no Temporary Demo.");
         }
         else if (model_and_finish_requested)
         {
@@ -2544,9 +2696,9 @@ private:
         }
         if constexpr (nskinzcs2::build::kLiveHotpatchTest) {
             if(profile.mode==GloveProfileMode::ModelAndFinish) {
-                if(ImGui::Checkbox(nskinzcs2::build::kUiLanguageChinese ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",
+                if(ImGui::Checkbox(nskinzcs2::localization::IsChinese() ? "允许旧 Demo 尝试新模型（可能闪退）" : "Try unseen models in older Demos (may crash)",
                     &profile.live_test_allow_old_demo_models)) PushWorkingConfig();
-                ImGui::TextWrapped("%s",nskinzcs2::build::kUiLanguageChinese ?
+                ImGui::TextWrapped("%s",nskinzcs2::localization::IsChinese() ?
                     "仅在点击此手套的智能应用后生效。使用上游本地动画数据路径，影响当前 Demo；已知失败版本继续拦截。" :
                     "Applies with this glove button. Uses upstream local animation data for this Demo; known failed versions remain blocked.");
             }
@@ -2629,7 +2781,7 @@ private:
         DrawFieldHelp(UiTextId::NameTagHelp);
 
         if (nskinzcs2::build::kLiveHotpatchTest) {
-            ImGui::TextWrapped("%s", nskinzcs2::build::kUiLanguageChinese ? "默认 T/CT 换特殊手套请选择模型＋饰面；智能应用走实时手套重建。" : "For stock gloves choose Model + Finish. Apply requests live native glove rebuilding.");
+            ImGui::TextWrapped("%s", nskinzcs2::localization::IsChinese() ? "默认 T/CT 换特殊手套请选择模型＋饰面；智能应用走实时手套重建。" : "For stock gloves choose Model + Finish. Apply requests live native glove rebuilding.");
         }
         else if (profile.mode == GloveProfileMode::FinishOnly)
         {
@@ -2661,7 +2813,7 @@ private:
 
         if (nskinzcs2::build::kLiveHotpatchTest) {
             if(!status.detail.empty()) ImGui::TextWrapped("%s",Narrow(status.detail).c_str());
-            ImGui::TextDisabled("%s", nskinzcs2::build::kUiLanguageChinese ? "绑定及应用结果请查看下方运行时状态和测试日志。" : "See runtime status and test log for binding/apply results.");
+            ImGui::TextDisabled("%s", nskinzcs2::localization::IsChinese() ? "绑定及应用结果请查看下方运行时状态和测试日志。" : "See runtime status and test log for binding/apply results.");
         }
         else if (status.glove_pawn_fallback_bound)
         {
@@ -2780,12 +2932,12 @@ private:
             UiTextId::ApplyKeychain);
         if constexpr(nskinzcs2::build::kLiveKeychainHotpatch) {
             ImGui::BeginDisabled(!external_runtime_process_id_ && !state_.SnapshotStatus().demo_playing);
-            if(ImGui::Button(nskinzcs2::build::kUiLanguageChinese ? "刷新挂件（当前 Demo 回跳 1 tick）":"Refresh charm (replay current Demo by 1 tick)",ImVec2(-1,0))) {
+            if(ImGui::Button(nskinzcs2::localization::IsChinese() ? "刷新挂件（当前 Demo 回跳 1 tick）":"Refresh charm (replay current Demo by 1 tick)",ImVec2(-1,0))) {
                 const DWORD pid=external_runtime_process_id_ ? external_runtime_process_id_:GetCurrentProcessId();
                 const bool sent=nskinzcs2::live_test::RequestKeychainReplay(pid);
                 keychain_refresh_note_=sent
-                    ? (nskinzcs2::build::kUiLanguageChinese ? "已请求刷新当前 Demo 的挂件，未提交其它暂存配置。":"Charm refresh queued; other staged settings were not submitted.")
-                    : (nskinzcs2::build::kUiLanguageChinese ? "运行时刷新入口尚未就绪，请先应用一个饰品项。":"Runtime refresh is unavailable; apply an item first.");
+                    ? (nskinzcs2::localization::IsChinese() ? "已请求刷新当前 Demo 的挂件，未提交其它暂存配置。":"Charm refresh queued; other staged settings were not submitted.")
+                    : (nskinzcs2::localization::IsChinese() ? "运行时刷新入口尚未就绪，请先应用一个饰品项。":"Runtime refresh is unavailable; apply an item first.");
                 Logger::Info(Wide(keychain_refresh_note_));
             }
             ImGui::EndDisabled();
@@ -3309,7 +3461,7 @@ private:
         RefreshDemoSkinRewriteResult();
 
         ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest
-            ? (nskinzcs2::build::kUiLanguageChinese ? "临时 Demo 只重建挂件。枪械、刀、手套和贴纸请使用各自的热修应用按钮；本页不会将它们写入 Demo。" : "Temporary Demos reconstruct charms only. Use each live Apply button for guns, knives, gloves and stickers; this page never serializes them.")
+            ? (nskinzcs2::localization::IsChinese() ? "临时 Demo 只重建挂件。枪械、刀、手套和贴纸请使用各自的热修应用按钮；本页不会将它们写入 Demo。" : "Temporary Demos reconstruct charms only. Use each live Apply button for guns, knives, gloves and stickers; this page never serializes them.")
             : Ui(UiTextId::DemoRewriteDescription));
         ImGui::Separator();
 
@@ -4039,7 +4191,7 @@ private:
             StageStickerEdit();
         }
 
-        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::build::kUiLanguageChinese ? "仅当前槽／全部五槽按对应按钮实时应用；添加、替换、清除和位置参数使用同一热修路径。" : "Apply this slot or all five live: add, replace, clear and placement use one patch path.") : Ui(UiTextId::StickerDemoOnly));
+        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::localization::IsChinese() ? "仅当前槽／全部五槽按对应按钮实时应用；添加、替换、清除和位置参数使用同一热修路径。" : "Apply this slot or all five live: add, replace, clear and placement use one patch path.") : Ui(UiTextId::StickerDemoOnly));
 
         DrawStickerPlacementPreview(
             stickers,
@@ -4048,7 +4200,7 @@ private:
             legacy_model,
             LookupName(catalog.base_items, weapon_definition),
             resolved_placement);
-        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::build::kUiLanguageChinese ? "只修改已应用的槽位；其余原贴纸保留。应用的槽位使用预览中的预设／自定义位置。" : "Only applied slots change; other source stickers remain. Applied slots use the displayed preset/custom placement.") : Ui(UiTextId::StickerExistingSlotReplacementHelp));
+        ImGui::TextWrapped("%s", nskinzcs2::build::kLiveHotpatchTest ? (nskinzcs2::localization::IsChinese() ? "只修改已应用的槽位；其余原贴纸保留。应用的槽位使用预览中的预设／自定义位置。" : "Only applied slots change; other source stickers remain. Applied slots use the displayed preset/custom placement.") : Ui(UiTextId::StickerExistingSlotReplacementHelp));
 
         DrawScopedApplyButton(catalog,
             {nskinzcs2::ApplyScope::Sticker, static_cast<std::size_t>(selected_profile_), selected_sticker},
@@ -4314,6 +4466,13 @@ private:
 
     static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
     {
+        if (auto* self = reinterpret_cast<WindowController*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+            self && nskinzcs2::ui::RelayOverlayShortcut(hwnd, self->external_runtime_process_id_, message, wparam, lparam))
+        {
+            self->state_.SetWindowVisible(false);
+            Logger::Info(L"[PanelInput] Closed the panel for F8 game-input handoff.");
+            return 0;
+        }
         if (ImGui_ImplWin32_WndProcHandler(hwnd, message, wparam, lparam))
         {
             return TRUE;
@@ -4371,7 +4530,7 @@ private:
             break;
         case WM_CLOSE:
             state_.SetWindowVisible(false);
-            ShowWindow(hwnd, SW_HIDE);
+            nskinzcs2::ui::HidePanelAndReturnInput(hwnd, external_runtime_process_id_);
             return 0;
         case WM_DESTROY:
             // Partial device/font cleanup destroys a transient window too.
@@ -4390,6 +4549,14 @@ private:
     std::filesystem::path config_path_;
     DWORD external_runtime_process_id_ = 0;
     ConfigDocument working_config_;
+    std::future<nskinzcs2::runtime::PreparedMapMaterials> material_preparation_;
+    nskinzcs2::model::MapMaterialProfile pending_material_profile_;
+    std::string material_issue_;
+    ULONGLONG material_status_refreshed_=0;
+    nlohmann::json material_status_=nlohmann::json::object();
+    nskinzcs2::Preferences preferences_;
+    bool preferences_saved_ = true;
+    bool language_catalog_ready_ = true;
     std::shared_ptr<const Catalog> cached_catalog_snapshot_;
     std::vector<NamedId> cached_visible_weapon_items_;
     std::vector<NamedId> cached_selectable_knife_models_;

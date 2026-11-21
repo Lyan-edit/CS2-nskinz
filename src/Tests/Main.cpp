@@ -42,6 +42,7 @@ void RunKnifePairTests();
 void RunDemoSkinRewriteTests();
 void RunStabilityTests();
 void RunLiveHotpatchTests();
+void RunMaterialSettingsTests();
 
 namespace
 {
@@ -58,6 +59,7 @@ bool g_logging_only = false;
 bool g_map_remap_only = false;
 bool g_stability_only = false;
 bool g_live_hotpatch_only = false;
+bool g_material_settings_only = false;
 
 void WriteRadarPreviewIfRequested(
     const std::string_view name,
@@ -7221,6 +7223,7 @@ int RunAllTests()
 {
     try
     {
+        if (g_material_settings_only) { RunMaterialSettingsTests(); return EXIT_SUCCESS; }
         if (g_live_hotpatch_only) {
             RunNamedTest("TestLiveHotpatch", RunLiveHotpatchTests);
             std::cout << "live hotpatch integration tests passed\n";
@@ -7320,6 +7323,7 @@ int RunAllTests()
         {
             return EXIT_SUCCESS;
         }
+        RunNamedTest("TestMaterialSettings", RunMaterialSettingsTests);
         RunNamedTest("TestCompatibilityManifest", TestCompatibilityManifest);
         RunNamedTest("TestCatalogStoreRoundTrip", TestCatalogStoreRoundTrip);
         RunNamedTest("TestInstalledCompatibilityIfRequested", TestInstalledCompatibilityIfRequested);
@@ -7435,6 +7439,7 @@ void ParseArguments(const int argc, wchar_t** argv)
         {
             g_logging_only = true;
         }
+        else if (argument == L"--material-settings-only") { g_material_settings_only = true; }
         else if (argument == L"--live-hotpatch-only") { g_live_hotpatch_only = true; }
         else if (argument == L"--stability-only")
         {
