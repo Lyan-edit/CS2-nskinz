@@ -1,4 +1,5 @@
 #include "Runtime/LiveHotpatch.hpp"
+#include "../../third_party/live_cosmetics/src/game.h"
 #include "Runtime/LivePresentation.hpp"
 #include "Runtime/DemoSkinRewrite.hpp"
 #include "Core/BuildConfig.hpp"
@@ -44,6 +45,33 @@ void TestInstalledHudEvidence() {
 }
 void RunLiveExtrasTests() {
     using namespace nskinzcs2;
+    const auto visualCache=live_port::Game::ProbeFirearmVisualCacheForTests();
+    std::cout<<"drop_world_visual_cache_refresh="<<(visualCache ? "PASS":"FAIL")<<std::endl;
+    Check(visualCache,"the firearm refresh must invalidate the old visuals before native world material generation");
+    const auto continuity=live_port::Skins::ProbeWeaponContinuityForTests();
+    std::cout<<"holstered_firearm_exact_owner_selection="<<(continuity.holsteredSelection ? "PASS":"FAIL")<<std::endl;
+    Check(continuity.holsteredSelection,
+        "a unique carried M4A1-S must match while the knife is active, excluding ground, stale-owner and ambiguous matches");
+    std::cout<<"later_unapplied_pickup_untouched="<<(continuity.laterPickupUntouched ? "PASS":"FAIL")<<std::endl;
+    std::cout<<"post_network_update_finish_retained="<<(continuity.postUpdateFinishRetained ? "PASS":"FAIL")<<std::endl;
+    Check(continuity.laterPickupUntouched && continuity.postUpdateFinishRetained,
+        "only explicitly bound guns must retain their finish after network updates; later pickups must remain original");
+    Check(continuity.templateDoesNotRetarget && continuity.repeatedApplyBindsNewGun,
+        "only another explicit Apply can bind a new gun, and editing its template must not repaint previous guns");
+    Check(continuity.stablePostUpdate,"unchanged post-update maintenance must not request material regeneration");
+    std::cout<<"weapon_drop_finish_retained="<<(continuity.droppedFinish ? "PASS":"FAIL")
+             <<"; pickup_refresh_first_frame="<<(continuity.pickupRefreshImmediate ? "PASS":"FAIL")<<std::endl;
+    Check(continuity.droppedFinish,"dropping a configured firearm must not restore its source finish");
+    Check(continuity.pickupRefreshImmediate,"picking up a firearm must not wait for the delayed material debounce");
+    Check(continuity.unconfiguredPickupRetained,"an unconfigured holder must retain this weapon's applied appearance");
+    Check(continuity.configuredPickupOverrides,"a new holder's explicit Apply must override this particular gun's retained finish");
+    Check(continuity.disabledRestores,"explicitly disabling this gun must restore the original recording's finish");
+    Check(continuity.unrelatedUntouched,"unbound world guns must remain untouched");
+    Check(continuity.reusedEntityRejected && continuity.reusedDefinitionRejected,"recycled entity addresses or changed weapon definitions must not inherit a prior binding");
+    Check(continuity.readinessDeferred,"an unfinished model must wait until its first ready frame, without losing the ownership refresh");
+    Check(continuity.batchedOnce && continuity.steadyFramesDoNotRefresh,"ownership refreshes must coalesce once and never regenerate on unchanged frames");
+    Check(continuity.multipleGunTypes,"pistol, rifle and sniper definitions must share the same continuity policy");
+    std::cout<<"weapon_continuity_transfer_override_restore=PASS; entity_reuse_isolation=PASS; readiness_gate=PASS; refresh_batching_and_no_per_frame_rebuild=PASS; native_game_calls=0\n";
     TestInstalledHudEvidence();
     const bool hud=live_test::presentation::ProbeHudPipelineForTests(),held=live_port::Skins::ProbeHeldWeaponRuleForTests();
     std::cout<<"captured_model_swap_hud_cached_507_to_508="<<(hud ? "PASS":"FAIL")<<"; configured_holder_picked_up_M4="<<(held ? "PASS":"FAIL")<<"\n";
@@ -130,8 +158,18 @@ void RunLiveExtrasTests() {
     Check(ConfigStore::Save(dir/"config.json",all_plan.apply_config) && ConfigStore::Load(dir/"config.json").profiles[0].stickers[1].live_slot_override,"slot apply/clear survives configuration persistence");
     live_test::WeaponModels models{{{123,7},false},{{124,16},true}};
     Check(live_test::PublishWeaponModels(dir,4321,models) && live_test::ReadWeaponModels(dir,4321)==models,"isolated preview reads current weapon legacy/modern models without game pointers");
+    // 12.dem records the M4A1-S already on the ground at this tick.
+    const live_test::FirearmApplyResult mismatch{11,live_port::Skins::FirearmApplyState::NoCarriedWeapon,60,54618};
+    live_test::FirearmApplyResult acknowledged;
+    Check(live_test::PublishWeaponModels(dir,4321,models,mismatch) &&
+        live_test::ReadWeaponModels(dir,4321,&acknowledged)==models && acknowledged==mismatch,
+        "the isolated panel must receive the actual rejection, requested model and tick");
+    Check(live_test::ReadWeaponModels(dir,4322,&acknowledged).empty() && !acknowledged.sequence,
+        "a firearm result from another game process must not be displayed");
     {std::ofstream bad(dir/"nSkinzCS2.live-weapon-models-4321.json");bad<<"{\"at\":0,\"models\":[[123,7,false]]}";}
-    Check(live_test::ReadWeaponModels(dir,4321).empty(),"stale weapon preview proof is rejected");
+    acknowledged=mismatch;
+    Check(live_test::ReadWeaponModels(dir,4321,&acknowledged).empty() && !acknowledged.sequence,
+        "stale weapon preview or apply results must be rejected");
     model::KnifeProfile knife;model::GloveProfile glove;
     Check(knife.live_test_allow_old_demo_models && glove.live_test_allow_old_demo_models,"knife and glove model modes default to older-Demo model attempts");
     model::ConfigDocument defaults;defaults.knife_profiles={knife};defaults.glove_profiles={glove};

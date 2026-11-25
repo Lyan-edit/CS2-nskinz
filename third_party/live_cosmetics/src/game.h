@@ -86,7 +86,12 @@ int SchemaMisses();
 int ClientVersion();         // CS2 build number, 0 if unknown
 void ChangeSubclass(void* entity, uint32_t token);   // the game's own "subclass changed" handling
 void RegenerateWeaponSkins();                // what the regenerate_weapon_skins command does, without sv_cheats
-int RegenerateWeapon(void* weapon, bool force); // one weapon: 1 done, 0 its materials aren't made yet, -1 not available
+// A firearm refresh invalidates the schema-backed visual payload before regeneration.
+int RegenerateWeapon(void* weapon, bool force, ptrdiff_t visualsDataOffset=0);
+ptrdiff_t FirearmVisualsDataOffset();
+#ifdef NSKINZCS2_TESTS
+bool ProbeFirearmVisualCacheForTests();
+#endif
 bool GloveGates(void* item, bool& skip, const char*& model, void*& paint);   // the game's own glove checks
 bool UseLocalAnimData();                     // make demo playback use local animation data; false if not possible
 void RestoreAnimData();                      // put that setting back as it was (no-op if never changed)

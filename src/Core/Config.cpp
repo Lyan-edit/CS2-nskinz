@@ -520,6 +520,8 @@ static void to_json(json& j, const ConfigDocument& value)
         {"keychain_profiles", value.keychain_profiles},
         {"map_remap", value.map_remap},
         {"map_materials", {{"enabled",value.map_materials.enabled},{"map",value.map_materials.map}}},
+        {"firearm_apply_request", {{"sequence",value.firearm_apply_request.sequence},
+            {"xuid",value.firearm_apply_request.xuid},{"definition",value.firearm_apply_request.definition}}},
         {"experimental_allow_hud_alias_synthetic_proxy_model_write", value.experimental_allow_hud_alias_synthetic_proxy_model_write},
     };
 }
@@ -535,6 +537,9 @@ static void from_json(const json& j, ConfigDocument& value)
     const auto materials = j.value("map_materials",json::object());
     value.map_materials.enabled = materials.value("enabled",false);
     value.map_materials.map = materials.value("map",std::string("de_mirage"));
+    const auto firearm = j.value("firearm_apply_request",json::object());
+    value.firearm_apply_request = {firearm.value("sequence",std::uint64_t{}),
+        firearm.value("xuid",std::uint64_t{}),firearm.value("definition",0)};
     value.experimental_allow_hud_alias_synthetic_proxy_model_write =
         j.value("experimental_allow_hud_alias_synthetic_proxy_model_write", false);
 }
@@ -1038,6 +1043,8 @@ nskinzcs2::ScopedApplyPlan nskinzcs2::BuildScopedApplyPlan(
                 value.stat_trak = 0; value.custom_name.clear();
             }
             value.enabled = selected.enabled || has_stickers(value);
+            merged.firearm_apply_request = {applied.firearm_apply_request.sequence+1,
+                selected.xuid,selected.base_item};
         }
         else
         {

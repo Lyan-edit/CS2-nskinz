@@ -1787,6 +1787,7 @@ private:
 
     void StartScopedApply(const Catalog& catalog, const nskinzcs2::ApplyTarget target)
     {
+        pending_firearm_apply_sequence_ = 0;
         // Refresh proof on click as well as on the UI's throttled display poll.
         const auto carriers = external_runtime_process_id_ != 0
             ? nskinzcs2::runtime::ReadGloveApplyCarriers(config_path_.parent_path(), external_runtime_process_id_)
@@ -1822,7 +1823,13 @@ private:
                 ? nskinzcs2::runtime::ReadGloveApplyCarriers(config_path_.parent_path(), external_runtime_process_id_)
                 : state_.SnapshotGloveApplyCarriers();
             if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
-                if(external_runtime_process_id_!=0) live_weapon_models_=nskinzcs2::live_test::ReadWeaponModels(config_path_.parent_path(),external_runtime_process_id_);
+                nskinzcs2::live_test::FirearmApplyResult firearm_apply;
+                if(external_runtime_process_id_!=0 || pending_firearm_apply_sequence_) {
+                    const DWORD pid=external_runtime_process_id_ ? external_runtime_process_id_:GetCurrentProcessId();
+                    live_weapon_models_=nskinzcs2::live_test::ReadWeaponModels(
+                        config_path_.parent_path(),pid,&firearm_apply);
+                }
+                UpdateFirearmApplyFeedback(catalog,firearm_apply,model_now);
             }
             model_carriers_refreshed_ = model_now;
         }
@@ -4238,6 +4245,54 @@ private:
             ImGui::TextWrapped("%s", Narrow(demo_skin_rewrite_result_.detail).c_str());
     }
 
+    void UpdateFirearmApplyFeedback(const Catalog& catalog,
+        const nskinzcs2::live_test::FirearmApplyResult& result,ULONGLONG now)
+    {
+        using nskinzcs2::live_port::Skins::FirearmApplyState;
+        if(!pending_firearm_apply_sequence_) return;
+        const bool chinese=nskinzcs2::localization::IsChinese();
+        auto& detail=demo_skin_rewrite_result_.detail;
+        if(result.sequence!=pending_firearm_apply_sequence_ || result.state==FirearmApplyState::Pending) {
+            if(now>=pending_firearm_apply_deadline_) {
+                detail=chinese ? L"尚未收到游戏确认。请检查 Demo 播放状态，再应用一次。"
+                    : L"CS2 has not confirmed the request. Check Demo playback and try Apply again.";
+                pending_firearm_apply_sequence_=0;
+            }
+            return;
+        }
+        pending_firearm_apply_sequence_=0;
+        switch(result.state) {
+        case FirearmApplyState::Applied:
+            detail=chinese ? L"涂装已写入目标玩家携带的这把枪。" : L"Finish written to the firearm carried by the target player.";
+            break;
+        case FirearmApplyState::Restored:
+            detail=chinese ? L"已清除当前枪械的涂装覆盖。" : L"Finish override cleared for the captured firearm.";
+            break;
+        case FirearmApplyState::NoCarriedWeapon: {
+            const auto requested=Wide(LookupName(catalog.base_items,result.requested));
+            detail=chinese ? L"本次未应用。目标玩家身上没有 "+requested+L"，请检查当前回放和 XUID。"
+                : L"Finish not applied. The target player is not carrying "+requested+L". Check the Demo and XUID.";
+            break;
+        }
+        case FirearmApplyState::NoDemo:
+            detail=chinese ? L"本次未应用。请进入 Demo 后再试。" : L"Finish not applied. Open a Demo and try again.";
+            break;
+        case FirearmApplyState::DemoChanging:
+            detail=chinese ? L"本次未应用。Demo 正在切换或枪械已变化，请等画面稳定后再试。"
+                : L"Finish not applied. Wait for the Demo and weapon to settle, then try again.";
+            break;
+        case FirearmApplyState::AmbiguousWeapon:
+            detail=chinese ? L"本次未应用。检测到多把同型号枪械，请等切换结束后再试。"
+                : L"Finish not applied. Multiple carried firearms match. Retry after the weapon transition.";
+            break;
+        default:
+            detail=chinese ? L"本次未应用。游戏端未能确认枪械，请查看运行时日志。"
+                : L"Finish not applied. CS2 did not confirm the firearm. See the runtime log.";
+            break;
+        }
+        if(result.tick>=0) detail+=L" (tick "+std::to_wstring(result.tick)+L")";
+    }
+
     void StartSmartApply(const Catalog& catalog, const nskinzcs2::ScopedApplyPlan& plan)
     {
         if (!plan.NeedsDemo())
@@ -4247,6 +4302,15 @@ private:
             {
                 smart_reconstructed_knives_ = plan.reconstructed_knives;
                 demo_skin_rewrite_result_.detail = Wide(Ui(UiTextId::CurrentItemAppliedLive));
+                if constexpr(nskinzcs2::build::kLiveHotpatchTest) {
+                    if(pending_apply_target_ && pending_apply_target_->scope==nskinzcs2::ApplyScope::WeaponFinish) {
+                        pending_firearm_apply_sequence_=applied.firearm_apply_request.sequence;
+                        pending_firearm_apply_deadline_=GetTickCount64()+10000;
+                        demo_skin_rewrite_result_.detail=nskinzcs2::localization::IsChinese()
+                            ? L"等待游戏确认目标玩家携带的枪械…"
+                            : L"Waiting for CS2 to confirm the target player's carried firearm…";
+                    }
+                }
                 if constexpr(nskinzcs2::build::kLiveKeychainHotpatch) {
                     if(pending_apply_target_ && pending_apply_target_->scope==nskinzcs2::ApplyScope::Keychain) {
                         const DWORD pid=external_runtime_process_id_ ? external_runtime_process_id_:GetCurrentProcessId();
@@ -4567,6 +4631,8 @@ private:
     ULONGLONG model_carriers_refreshed_ = 0;
     ULONGLONG model_query_published_ = 0;
     nskinzcs2::live_test::WeaponModels live_weapon_models_;
+    std::uint64_t pending_firearm_apply_sequence_ = 0;
+    ULONGLONG pending_firearm_apply_deadline_ = 0;
     std::uint64_t model_probe_xuid_ = 0;
     bool model_probe_activated_ = false;
     bool working_config_dirty_ = false;

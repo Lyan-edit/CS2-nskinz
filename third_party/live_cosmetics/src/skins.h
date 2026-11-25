@@ -98,6 +98,18 @@ extern Settings settings;
 extern bool demoPlaying;
 extern std::string lastStatus;
 extern std::string gloveNote; // Integration: admission failures visible in nSkinz status.
+extern std::string firearmNote; // One-shot active-gun targeting failures.
+enum class FirearmApplyState {
+    Pending, Applied, Restored, NoDemo, DemoChanging, NoCarriedWeapon, AmbiguousWeapon, Unavailable
+};
+struct FirearmApplyResult {
+    uint64_t sequence=0;
+    FirearmApplyState state=FirearmApplyState::Pending;
+    uint16_t requested=0;
+    int tick=-1;
+    bool operator==(const FirearmApplyResult&) const = default;
+};
+extern FirearmApplyResult firearmApplyResult;
 struct KeychainModuleInfo {uint32_t handle=0,owner=0;int definition=-1,seed=-1;};
 extern std::vector<KeychainModuleInfo> liveKeychainModules; // Read-only snapshot from the existing entity walk.
 extern std::string keychainNote;
@@ -124,6 +136,18 @@ struct PatchProbeResult {
 PatchProbeResult ProbeAttributePatchesForTests(const GunSkin& rule,bool legacy);
 bool ProbeWeaponPresentationForTests(PresentationListener observer=nullptr);
 bool ProbeHeldWeaponRuleForTests();
+struct WeaponContinuityProbe {
+    bool laterPickupUntouched=false;
+    bool holsteredSelection=false;
+    bool postUpdateFinishRetained=false;
+    bool templateDoesNotRetarget=false, repeatedApplyBindsNewGun=false, stablePostUpdate=false;
+    bool droppedFinish=false, pickupRefreshImmediate=false, unconfiguredPickupRetained=false;
+    bool configuredPickupOverrides=false, disabledRestores=false, unrelatedUntouched=false;
+    bool reusedEntityRejected=false, reusedDefinitionRejected=false, readinessDeferred=false;
+    bool batchedOnce=false, steadyFramesDoNotRefresh=false;
+    bool multipleGunTypes=false;
+};
+WeaponContinuityProbe ProbeWeaponContinuityForTests();
 bool ProbeDefaultGloveItemForTests(uint16_t source,uint16_t target,int paint);
 void ProbeLoadAnimationHistoryForTests(const std::string& folder);
 void ProbeResetAnimationHistoryForTests();
@@ -131,5 +155,7 @@ bool ProbePreserveExtrasForTests();
 bool ProbeModelAdmissionForTests(int demo_version,int game_version,bool model_in_demo,bool known_bad=false);
 #endif
 void OnFrameStage(int stage);                // game thread, every FrameStageNotify
+void AfterFrameStage(int stage);             // after the game's original callback
+void CaptureFirearmApply(uint64_t sequence,uint64_t xuid,uint16_t definition);
 }
 } // namespace nskinzcs2::live_port

@@ -323,6 +323,7 @@ using RebuildFn = void (*)(void*, int);
 static PrepareFn g_wPrepare = nullptr;
 static RebuildFn g_wRebuild = nullptr;
 static int32_t g_wCountA = 0, g_wCountB = 0, g_wPrepareOff = 0;
+static ptrdiff_t g_wVisualsDataOffset = 0;
 
 static void FindWeaponRebuild() {
     if (!g_regenerate) return;
@@ -349,13 +350,52 @@ void MaterialCounts(void* weapon, int& a, int& b) {
     b = g_wCountB ? At<int32_t>(weapon, g_wCountB) : -1;
 }
 
-int RegenerateWeapon(void* weapon, bool force) {
+ptrdiff_t FirearmVisualsDataOffset() {
+    return g_wPrepare && g_wRebuild ? g_wVisualsDataOffset : 0;
+}
+
+int RegenerateWeapon(void* weapon, bool force, ptrdiff_t visualsDataOffset) {
     if (!g_wPrepare || !g_wRebuild) return -1;
     if (!force && At<int32_t>(weapon, g_wCountA) <= 0 && At<int32_t>(weapon, g_wCountB) <= 0) return 0;   // materials not made yet
+    if (visualsDataOffset > 0) {
+        if (!Readable(static_cast<uint8_t*>(weapon)+visualsDataOffset,sizeof(bool))) return -1;
+        SetIfDiff<bool>(weapon,visualsDataOffset,false);
+    }
     g_wPrepare((uint8_t*)weapon + g_wPrepareOff, true);
+    // Ensure the generator cannot reuse a payload marked valid by the clear.
+    if (visualsDataOffset > 0) SetIfDiff<bool>(weapon,visualsDataOffset,false);
     g_wRebuild(weapon, 0);
     return 1;
 }
+
+#ifdef NSKINZCS2_TESTS
+bool ProbeFirearmVisualCacheForTests() {
+    // The recorded drop keeps the same entity and paint 984. The native
+    // generator may still reuse a valid cached payload for that entity.
+    constexpr ptrdiff_t visuals=8, sourcePaint=12, worldPaint=16, calls=20;
+    alignas(16) uint8_t weapon[64]{};
+    At<bool>(weapon,visuals)=true;
+    At<int>(weapon,sourcePaint)=984;
+    At<int>(weapon,worldPaint)=0;
+    const auto savedPrepare=g_wPrepare;
+    const auto savedRebuild=g_wRebuild;
+    const auto savedOffset=g_wPrepareOff;
+    g_wPrepare=+[](void*,bool){};
+    g_wPrepareOff=0;
+    g_wRebuild=+[](void* entity,int) {
+        ++At<int>(entity,calls);
+        if(!Get<bool>(entity,visuals)) {
+            At<int>(entity,worldPaint)=Get<int>(entity,sourcePaint);
+            At<bool>(entity,visuals)=true;
+        }
+    };
+    const bool regenerated=RegenerateWeapon(weapon,true,visuals)==1;
+    g_wPrepare=savedPrepare;
+    g_wRebuild=savedRebuild;
+    g_wPrepareOff=savedOffset;
+    return regenerated && Get<int>(weapon,calls)==1 && Get<int>(weapon,worldPaint)==984;
+}
+#endif
 
 // The three checks CS2 makes before it builds econ gloves (found next to the "gloves/paints/" text):
 //   Skip(item) must be false, ModelPath(item) must give a model, PaintKit(item) must give the finish.
@@ -870,6 +910,7 @@ uint32_t StringToken(const char* s) {
 
 bool Init() {
     g_schema.clear();g_schemaMisses=0; // Integration: clean state for a manual retry.
+    g_wVisualsDataOffset=0;
     client = Interface("client.dll", "Source2Client002");
     engine = Interface("engine2.dll", "Source2EngineToClient001");
     resourceService = Interface("engine2.dll", "GameResourceServiceClientV001");
@@ -906,6 +947,7 @@ bool Init() {
         Field(O.attr_InitialValue, "CEconItemAttribute", "m_flInitialValue");
         Size(O.attrSize, "CEconItemAttribute");
         Field(O.weapon_CustomEconReloadEventId, "C_CSWeaponBase", "m_nCustomEconReloadEventId");
+        SchemaField("C_CSWeaponBase","m_bVisualsDataSet",g_wVisualsDataOffset);
         Field(O.item_Initialized, "C_EconItemView", "m_bInitialized");
         Field(O.ctrl_hPlayerPawn, "CCSPlayerController", "m_hPlayerPawn");
         Field(O.pawn_EconGloves, "C_CSPlayerPawn", "m_EconGloves");

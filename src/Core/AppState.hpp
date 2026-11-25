@@ -196,6 +196,15 @@ struct MapMaterialProfile
     bool operator==(const MapMaterialProfile&) const = default;
 };
 
+// One-shot application intent, separate from saved cosmetic templates. Repeating
+// an unchanged Apply must still capture the currently active weapon instance.
+struct FirearmApplyRequest
+{
+    std::uint64_t sequence = 0;
+    std::uint64_t xuid = 0;
+    int definition = 0;
+};
+
 struct ConfigDocument
 {
     int version = 9;
@@ -205,6 +214,7 @@ struct ConfigDocument
     std::vector<KeychainProfile> keychain_profiles;
     MapRemapProfile map_remap;
     MapMaterialProfile map_materials;
+    FirearmApplyRequest firearm_apply_request;
     bool experimental_allow_hud_alias_synthetic_proxy_model_write = false;
 };
 

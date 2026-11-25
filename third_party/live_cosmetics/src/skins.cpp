@@ -14,6 +14,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 // Local authorized integration: isolate upstream symbols from nSkinz.
 namespace nskinzcs2::live_port {
@@ -538,6 +539,15 @@ struct Undo {
     int matRetries = 0, hudMatRemakes = 0;
     uint8_t meshWant = 0;      // weapon: mesh bits we want (1 current model, 2 legacy model), 0 none
     bool secondCheck = false;
+    uint64_t ruleOwner = 0, lastHolder = 0;
+    int ruleTeam = 0;
+    bool holderKnown = false, ownershipRefreshPending = false, rebuildForOwnership = false;
+    GunSkin maintainedSkin;
+    uint64_t maintainedKey=0, maintainedOwner=0;
+    bool maintainGun=false, postRebuildPending=false;
+    ULONGLONG postRetryAt=0;
+    unsigned postRetries=0;
+    uint32_t observedOwnerHandle=0xffffffffu;
 };
 
 // Item IDs we hand out. A real-looking, unique ID per change makes CS2 treat the item as a new one and build its skin
@@ -733,9 +743,10 @@ static bool TryRebuild(void* weapon, bool force) {
 
 // Skins are rebuilt with the game's own regenerate_weapon_skins routine. It first clears CS2's cache of built
 // skins and then rebuilds every weapon; rebuilding one weapon alone (1.5-1.6.3) reused the cached old skin, which is
-// why changes often didn't show. It runs once per batch of changes: 0.4 s after the last change, then once more 1.6 s
-// later for weapons whose materials weren't made yet the first time (a knife that just changed model, a new gun).
+// why changes often didn't show. Ordinary edits coalesce after the first change; ownership transitions run at the
+// first ready frame. A later pass covers models whose materials were not made on the first attempt.
 static ULONGLONG g_regenDue = 0, g_regenSecond = 0, g_lastRegen = 0;
+static bool g_regenUrgent = false;
 
 // First-person models take the weapon's skin material when they are made. After a rebuild the weapon has its new
 // material but the first-person model still shows the old one (the stock AK in first person, the knife finish that
@@ -776,8 +787,25 @@ static void RunHudRemakes(ULONGLONG now) {
 }
 
 static void RefreshWeapon(void*) {
-    g_regenDue = GetTickCount64() + 400;
+    const auto due=GetTickCount64()+400;
+    if (!g_regenDue || due<g_regenDue) g_regenDue=due;
     g_regenSecond = 0;
+}
+static void RefreshWeaponOwnership(Undo& u) {
+    const auto now=GetTickCount64();
+    if (!g_regenDue || now<g_regenDue) g_regenDue=now;
+    g_regenUrgent=true;g_regenSecond=0;u.rebuildForOwnership=true;
+}
+static void AdvanceWeaponRefresh(ULONGLONG now) {
+    if (g_regenUrgent || (g_regenDue && now>=g_regenDue && now-g_lastRegen>=800)) {
+        g_regenUrgent=false;g_regenDue=0;g_regenSecond=now+1600;g_regenWanted=true;
+    } else if (g_regenSecond && now>=g_regenSecond) {
+        g_regenSecond=0;g_regenWanted=true;
+    }
+}
+static void ClearWeaponRefresh() {
+    g_regenDue=g_regenSecond=0;g_regenWanted=g_regenUrgent=false;
+    g_pendingRebuild.clear();g_hudDue.clear();
 }
 
 static void RunPendingRebuilds(ULONGLONG now) {
@@ -1047,7 +1075,7 @@ static void PresentWeapon(void* ent,uint8_t* item,uint32_t handle,uint64_t xuid,
 }
 
 static void ApplyWeapon(void* ent, uint8_t* item, uint32_t handle, uint64_t xuid, uint16_t realDef, uint16_t def, const GunSkin* rule,
-                        std::string& note, bool fresh, bool ready, bool keepModel) {
+                        std::string& note, bool fresh, bool ready, bool keepModel, bool refreshFirearmLocally=false) {
     auto it = g_weapons.find(handle);
     if(rule && !rule->writeFinish && it!=g_weapons.end() && it->second.wroteFinish) {
         // Finish was disabled while extras stay active: restore it before
@@ -1188,14 +1216,19 @@ static void ApplyWeapon(void* ent, uint8_t* item, uint32_t handle, uint64_t xuid
         FirstRunEnd("hud-fix");
     }
     if (ShouldRefresh(u, Hash(xuid, def, *rule,legacy), overwritten, "gun", item, fresh && def == realDef)) {
-        RefreshWeapon(ent);
+        if(refreshFirearmLocally) {
+            u.postRebuildPending=true;
+            u.postRetries=0;
+        } else {
+            RefreshWeapon(ent);
+        }
         u.hudRemoves = 0;
         u.matRetries = 0;
         u.hudMatRemakes = 0;
         u.checkAt = now + 1200;
         u.gunChecked = false;
         u.secondCheck = false;
-    } else if (rule->paint > 0 && now - u.lastRefresh > 2500 && now >= u.matCheckAt) {
+    } else if (!refreshFirearmLocally && rule->paint > 0 && now - u.lastRefresh > 2500 && now >= u.matCheckAt) {
         // Did a skin material really get made? A knife model the demo never had may still be loading during the
         // first rebuilds, and then the knife (and its first-person model) stays without its finish. Check every 3 s
         // and rebuild again if there is no skin material (at most 5 times per change).
@@ -1530,8 +1563,9 @@ static void ReassertMeshes() {
     for (auto& kv : g_weapons) {
         Undo& u = kv.second;
         if (!u.meshWant) continue;
-        void* w = Game::FromHandle(kv.first);
+        void* w = Game::FromHandleExact(kv.first);
         if (!w || w != u.ent) continue;
+        if(u.maintainGun && Get<uint16_t>(static_cast<uint8_t*>(w)+O.econ_AttributeManager+O.container_Item,O.item_DefIndex)!=u.def)continue;
         uint64_t m = Game::MeshGroupMask(w);
         if (m && (m & 3) != u.meshWant) { Game::SetMeshGroupMask(w, (m & ~3ull) | u.meshWant); ++g_lateResets; }
         if (HudOff()) continue;
@@ -1668,6 +1702,277 @@ static bool DemoIsJumping() {
     return ms < g_quietUntil;
 }
 
+struct GunFrameApplication { uint64_t xuid; const GunSkin* rule; };
+struct FirearmBinding {
+    void* ent=nullptr;
+    uint16_t def=0;
+    uint64_t owner=0;
+    int team=0;
+    GunSkin finish, effective;
+    uint64_t extrasKey=0;
+};
+static std::unordered_map<uint32_t,FirearmBinding> g_firearmBindings;
+struct CapturedFirearmApply {
+    void* ent=nullptr;
+    void* entitySystem=nullptr;
+    uint32_t handle=0;
+    uint16_t def=0;
+    uint64_t owner=0;
+    int team=0;
+    GunSkin skin;
+};
+static CapturedFirearmApply g_capturedFirearm;
+static bool g_hasCapturedFirearm=false;
+std::string firearmNote;
+FirearmApplyResult firearmApplyResult;
+
+static void RejectFirearmApply(FirearmApplyState state, const char* reason) {
+    firearmApplyResult.state=state;
+    firearmNote=std::string("Firearm Apply not performed: ")+reason;
+    Log("%s tick %d, requested def %u.",
+        firearmNote.c_str(),firearmApplyResult.tick,firearmApplyResult.requested);
+}
+
+struct CarriedFirearmSelection {
+    void* entity=nullptr;
+    uint32_t handle=0;
+    bool ambiguous=false;
+
+    void Consider(void* candidate, uint32_t candidateHandle, uint32_t ownerHandle,
+        uint16_t candidateDefinition, uint32_t pawnHandle, uint16_t requestedDefinition) {
+        if(!candidate || ownerHandle!=pawnHandle || candidateDefinition!=requestedDefinition) return;
+        if(entity && (entity!=candidate || handle!=candidateHandle)) {
+            ambiguous=true;
+            return;
+        }
+        entity=candidate;
+        handle=candidateHandle;
+    }
+};
+
+static void BindFirearmInstance(void* ent,uint32_t handle,uint16_t def,uint64_t owner,int team,const GunSkin* skin) {
+    if(!skin || !skin->writeFinish) {g_firearmBindings.erase(handle);return;}
+    FirearmBinding binding;
+    binding.ent=ent;binding.def=def;binding.owner=owner;binding.team=team;
+    binding.finish=*skin;binding.effective=*skin;
+    g_firearmBindings.insert_or_assign(handle,std::move(binding));
+    if(auto old=g_weapons.find(handle);old!=g_weapons.end()) {
+        old->second.ownershipRefreshPending=true;
+        old->second.postRebuildPending=true;
+        old->second.postRetries=0;
+    }
+}
+
+void CaptureFirearmApply(uint64_t sequence,uint64_t xuid,uint16_t definition) {
+    // Runs only on the confirmed frame thread. Capture once, including failure:
+    // a rejected request must never wait for an unrelated future pickup.
+    g_hasCapturedFirearm=false;
+    firearmApplyResult={sequence,FirearmApplyState::Pending,definition};
+    firearmNote.clear();
+    if(!Game::IsPlayingDemo()) {
+        RejectFirearmApply(FirearmApplyState::NoDemo,"no active Demo.");return;
+    }
+    firearmApplyResult.tick=Game::DemoTick();
+    if(g_wasQuiet || GetTickCount64()<g_quietUntil) {
+        RejectFirearmApply(FirearmApplyState::DemoChanging,"Demo entities are changing.");return;
+    }
+    if(!xuid || !definition || IsKnife(definition) || IsGloves(definition)) {
+        RejectFirearmApply(FirearmApplyState::Unavailable,"invalid firearm selection.");return;
+    }
+    void* es=Game::EntitySystem();
+    if(!es) {
+        RejectFirearmApply(FirearmApplyState::Unavailable,"no verified entity system.");return;
+    }
+    for(int i=1;i<=64;++i) {
+        void* ctrl=Game::EntityAt(i);
+        if(!ctrl)continue;
+        const char* name=Game::DesignerName(ctrl);
+        if(!name || std::strcmp(name,"cs_player_controller") || ControllerXuid(ctrl)!=xuid)continue;
+        const auto pawnHandle=Get<uint32_t>(ctrl,O.ctrl_hPlayerPawn);
+        if(!Game::FromHandleExact(pawnHandle)) break;
+        // Demo inventory arrays can omit holstered weapons. Use the exact owner
+        // edge on each matching world entity, only once for this Apply request.
+        CarriedFirearmSelection selected;
+        for(int c=0;c<Game::HighestChunk() && !selected.ambiguous;++c) {
+            auto* chunk=Game::Chunk(es,c);
+            if(!chunk) continue;
+            for(int k=0;k<512 && !selected.ambiguous;++k) {
+                auto* identity=chunk+O.identitySize*k;
+                void* weapon=Get<void*>(identity,0);
+                const char* designer=Get<const char*>(identity,O.identity_designerName);
+                if(!weapon || !designer || std::strncmp(designer,"weapon_",7)!=0) continue;
+                const auto ownerHandle=Get<uint32_t>(weapon,O.ent_hOwnerEntity);
+                if(ownerHandle!=pawnHandle) continue;
+                const auto handle=Get<uint32_t>(identity,0x10);
+                auto* item=static_cast<uint8_t*>(weapon)+O.econ_AttributeManager+O.container_Item;
+                if(Game::HandleOf(weapon)==handle && Game::FromHandleExact(handle)==weapon) {
+                    selected.Consider(weapon,handle,ownerHandle,
+                        Get<uint16_t>(item,O.item_DefIndex),pawnHandle,definition);
+                }
+            }
+        }
+        if(selected.ambiguous) {
+            RejectFirearmApply(FirearmApplyState::AmbiguousWeapon,"multiple carried guns match the selected model.");return;
+        }
+        if(!selected.entity) break;
+        const int team=Get<uint8_t>(ctrl,O.ent_iTeamNum);
+        const auto player=rules.find(xuid);
+        const GunSkin* skin=player==rules.end() ? nullptr:GunRule(player->second,team,definition);
+        g_capturedFirearm={selected.entity,es,selected.handle,definition,xuid,team,{}};
+        g_capturedFirearm.skin.writeFinish=false;
+        if(skin)g_capturedFirearm.skin=*skin;
+        g_hasCapturedFirearm=true;firearmNote.clear();
+        Log("firearm Apply captured: tick %d, handle %x, def %u, holder %llu, finish %s",
+            firearmApplyResult.tick,selected.handle,definition,static_cast<unsigned long long>(xuid),
+            skin && skin->writeFinish ? "requested":"restore requested");
+        return;
+    }
+    RejectFirearmApply(FirearmApplyState::NoCarriedWeapon,"the selected player does not carry the selected firearm.");
+}
+
+// Shared seam for post-network maintenance and the packet-overwrite regression.
+static bool MaintainFirearmAfterUpdate(void* ent,uint8_t* item,Undo& state) {
+    if(!state.maintainGun || state.ent!=ent || Get<uint16_t>(item,O.item_DefIndex)!=state.def)return false;
+    const auto& skin=state.maintainedSkin;
+    bool reset=false;
+    if(skin.writeFinish) {
+        reset=Get<int>(ent,O.econ_FallbackPaintKit)!=skin.paint ||
+            Get<int>(ent,O.econ_FallbackSeed)!=skin.seed ||
+            Get<float>(ent,O.econ_FallbackWear)!=skin.wear ||
+            Get<int>(ent,O.econ_FallbackStatTrak)!=skin.stattrak;
+        SetIfDiff<int>(ent,O.econ_FallbackPaintKit,skin.paint);
+        SetIfDiff<int>(ent,O.econ_FallbackSeed,skin.seed);
+        SetIfDiff<float>(ent,O.econ_FallbackWear,skin.wear);
+        SetIfDiff<int>(ent,O.econ_FallbackStatTrak,skin.stattrak);
+        AttrVec attributes;
+        unsigned matched=0;
+        if(OpenList(item,O.item_AttributeList,attributes))for(int i=0;i<*attributes.count;++i) {
+            const auto* a=*attributes.data+i*O.attrSize;
+            const auto id=Get<uint16_t>(a,O.attr_DefIndex);
+            const float value=Get<float>(a,O.attr_Value);
+            if(id==ATTR_PAINT && value==float(skin.paint))matched|=1;
+            if(id==ATTR_SEED && value==float(skin.seed))matched|=2;
+            if(id==ATTR_WEAR && value==skin.wear)matched|=4;
+        }
+        reset |= matched!=7;
+    }
+    const bool legacy=skin.writeFinish ? IsLegacy(state.def,skin.paint):EffectiveWeaponLegacy(ent,item,state.def);
+    return WriteItem(item,state,state.maintainedOwner,state.def,skin,skin.writeFinish,legacy) || reset;
+}
+static GunFrameApplication ApplyFirearmForHolder(void* ent,uint8_t* item,uint32_t handle,uint16_t def,
+                                                uint64_t holder,int team,std::string& note,bool fresh,bool ready) {
+    auto known=g_weapons.find(handle);
+    if (known!=g_weapons.end() && (known->second.ent!=ent || known->second.def!=def)) {
+        g_weapons.erase(known);known=g_weapons.end();
+    }
+    const bool ownershipChanged=known==g_weapons.end() || !known->second.holderKnown || known->second.lastHolder!=holder;
+    auto binding=g_firearmBindings.find(handle);
+    if(binding!=g_firearmBindings.end() && (binding->second.ent!=ent || binding->second.def!=def)) {
+        g_firearmBindings.erase(binding);binding=g_firearmBindings.end();
+    }
+    uint64_t xuid=binding==g_firearmBindings.end() ? holder:binding->second.owner;
+    if(binding!=g_firearmBindings.end())team=binding->second.team;
+    const auto player=rules.find(xuid);
+    const auto* configured=player==rules.end() ? nullptr:GunRule(player->second,team,def);
+    GunSkin extras;
+    const GunSkin* rule=nullptr;
+    if(binding!=g_firearmBindings.end()) {
+        auto& bound=binding->second;
+        // A finish is frozen for this physical gun. Subsequent edits of the same
+        // player/model template cannot silently change a previously applied gun.
+        const auto extrasKey=configured ? Hash(xuid,def,*configured):1;
+        if(bound.extrasKey!=extrasKey) {
+            bound.effective=bound.finish;
+            bound.effective.patches=configured ? configured->patches:std::vector<AttributePatch>{};
+            bound.extrasKey=extrasKey;
+        }
+        rule=&bound.effective;
+    } else if(configured && (!configured->patches.empty() || !configured->preserveExtras)) {
+        // Sticker/charm routing retains its existing behavior, but a saved gun
+        // finish template is never permission to paint another picked-up gun.
+        extras=*configured;extras.writeFinish=false;rule=&extras;
+    }
+    const bool localRefresh=binding!=g_firearmBindings.end() && Game::FirearmVisualsDataOffset()>0 &&
+        !CrashedLastTime("regenerate");
+    ApplyWeapon(ent,item,handle,xuid,def,def,rule,note,fresh,ready,false,localRefresh);
+    if (auto applied=g_weapons.find(handle); rule && applied!=g_weapons.end()) {
+        auto& u=applied->second;
+        const auto ownerHandle=Get<uint32_t>(ent,O.ent_hOwnerEntity);
+        const bool ownerEdgeChanged=!u.holderKnown || u.observedOwnerHandle!=ownerHandle;
+        u.ruleOwner=xuid;u.ruleTeam=team;u.lastHolder=holder;u.holderKnown=true;
+        u.observedOwnerHandle=ownerHandle;
+        const auto key=Hash(xuid,def,*rule);
+        if(!u.maintainGun || u.maintainedKey!=key) {
+            u.maintainedSkin=*rule;u.maintainedKey=key;u.maintainedOwner=xuid;u.maintainGun=true;
+        }
+        u.ownershipRefreshPending |= ownershipChanged && !localRefresh;
+        if((localRefresh && ownerEdgeChanged) || (!localRefresh && ownershipChanged)) {
+            u.postRebuildPending=true;
+            u.postRetries=0;
+        }
+        if (u.ownershipRefreshPending && ready) {
+            RefreshWeaponOwnership(u);u.ownershipRefreshPending=false;
+        }
+        if (ownershipChanged && g_logBudget-- > 0)
+            Log("weapon continuity: handle %x, def %u, holder %llu, rule owner %llu, paint %d, model ready %d",
+                handle,def,static_cast<unsigned long long>(holder),static_cast<unsigned long long>(xuid),rule->paint,ready);
+    }
+    // Never return the address of the temporary extras-only copy.
+    return {xuid,rule ? (binding!=g_firearmBindings.end() ? &binding->second.effective:configured):nullptr};
+}
+
+void AfterFrameStage(int stage) {
+    (void)stage;
+    std::unique_lock guard(lock,std::try_to_lock);
+    if(!guard.owns_lock() || !settings.enabled || !demoPlaying || g_wasQuiet ||
+       GetTickCount64()<g_quietUntil || Game::EntitySystem()!=g_lastEntitySystem || !Game::IsPlayingDemo())return;
+    const auto now=GetTickCount64();
+    const auto visualsOffset=Game::FirearmVisualsDataOffset();
+    for(auto& [handle,state]:g_weapons) {
+        if(!state.maintainGun)continue; // Knives/gloves keep their existing paths.
+        void* weapon=Game::FromHandleExact(handle);
+        if(!weapon || weapon!=state.ent)continue;
+        auto* item=static_cast<uint8_t*>(weapon)+O.econ_AttributeManager+O.container_Item;
+        if(Get<uint16_t>(item,O.item_DefIndex)!=state.def)continue;
+        const auto ownerHandle=Get<uint32_t>(weapon,O.ent_hOwnerEntity);
+        if(state.observedOwnerHandle!=ownerHandle) {
+            state.observedOwnerHandle=ownerHandle;state.postRebuildPending=true;state.postRetries=0;
+        }
+        const bool reset=MaintainFirearmAfterUpdate(weapon,item,state);
+        if(state.meshWant && !BodyOff())Game::SetNetworkedBodyGroup(weapon,"body",state.meshWant==2 ? 1:0);
+        const bool boundFinish = state.maintainedSkin.writeFinish && g_firearmBindings.contains(handle);
+        const char* model=Game::ModelName(weapon);
+        const bool ready=Get<void*>(weapon,O.ent_VData) && model && *model;
+        const bool transition=state.postRebuildPending;
+        int primary=-1, companion=-1;
+        if(boundFinish && state.maintainedSkin.paint>0) Game::MaterialCounts(weapon,primary,companion);
+        const bool emptyWorldMaterials=primary==0 && companion==0;
+        if(ready && (transition || ((reset || emptyWorldMaterials) &&
+           state.postRetries<3 && now>=state.postRetryAt)) &&
+           !CrashedLastTime("regenerate")) {
+            Step step("finishing firearm material after game update");
+            FirstRunBegin("regenerate");
+            // The composite generator reads the current world mesh. Set it
+            // before regenerating, even if the game reset it in this callback.
+            if(state.meshWant) {
+                const auto mesh=Game::MeshGroupMask(weapon);
+                if(mesh && (mesh&3)!=state.meshWant)
+                    Game::SetMeshGroupMask(weapon,(mesh&~3ull)|state.meshWant);
+            }
+            const int built=Game::RegenerateWeapon(weapon,true,boundFinish ? visualsOffset:0);
+            FirstRunEnd("regenerate");
+            state.postRebuildPending=false;state.postRetryAt=now+1500;++state.postRetries;
+            if(Game::FromHandleExact(handle)!=weapon)continue;
+            MaintainFirearmAfterUpdate(weapon,item,state);
+            int a=-1,b=-1;Game::MaterialCounts(weapon,a,b);
+            if(g_logBudget-- > 0)Log("firearm post-update: tick %d, handle %x, holder %llu, paint %d, corrected %d, native rebuild %d, visuals invalidated %d, materials %d/%d",
+                Game::DemoTick(),handle,static_cast<unsigned long long>(OwnerXuid(weapon)),
+                Get<int>(weapon,O.econ_FallbackPaintKit),reset,built,boundFinish && visualsOffset>0 && built==1,a,b);
+        }
+    }
+    ReassertMeshes();
+}
+
 void OnFrameStage(int stage) {
     if (demoPlaying && DemoIsJumping()) {
         if (!g_wasQuiet) { g_wasQuiet = true; Breadcrumb("demo jumping - waiting"); }
@@ -1743,7 +2048,11 @@ void OnFrameStage(int stage) {
         }
     }
     if (!demoPlaying || !settings.enabled) {
+        ClearWeaponRefresh();
         g_weapons.clear();
+        g_firearmBindings.clear();
+        if(std::exchange(g_hasCapturedFirearm,false))
+            RejectFirearmApply(FirearmApplyState::Unavailable,"playback stopped before the captured gun could be updated.");
         g_gloves.clear();
         g_knives.clear();
         g_agents.clear();
@@ -1756,8 +2065,7 @@ void OnFrameStage(int stage) {
     Step step("reading the entity list");
     void* es = Game::EntitySystem();
     if (!es) { lastStatus = "Can't find the entity list (see nSkinzLive.log)"; return; }
-    if (es != g_lastEntitySystem) { g_weapons.clear(); g_gloves.clear(); g_knives.clear(); g_knivesSeen.clear(); knivesInDemo.clear(); g_glovesSeen.clear(); glovesInDemo.clear(); g_agentsSeen.clear(); g_agentsSetByUs.clear(); agentsInDemo.clear(); g_agentLoads.clear(); g_agents.clear(); g_agentLastSet.clear(); g_knownWeapons.clear(); g_firstPass = true; g_lastEntitySystem = es; }
-
+    if (es != g_lastEntitySystem) { ClearWeaponRefresh();g_weapons.clear();g_firearmBindings.clear(); g_gloves.clear(); g_knives.clear(); g_knivesSeen.clear(); knivesInDemo.clear(); g_glovesSeen.clear(); glovesInDemo.clear(); g_agentsSeen.clear(); g_agentsSetByUs.clear(); agentsInDemo.clear(); g_agentLoads.clear(); g_agents.clear(); g_agentLastSet.clear(); g_knownWeapons.clear(); g_firstPass = true; g_lastEntitySystem = es; }
     const ULONGLONG now = GetTickCount64();
 
     // A jump in the demo (seek, round skip, Refresh now) rebuilds every entity. Touching them while the game is still
@@ -1765,12 +2073,33 @@ void OnFrameStage(int stage) {
     const int tick = Game::DemoTick();
     if (tick >= 0 && g_lastTick >= 0 && (tick < g_lastTick || tick > g_lastTick + 256)) {
         g_swapAllowedAt = now + 700;
+        ClearWeaponRefresh();
         // A jump can rebuild entities at the very same handle and address, so per-entity state can't be trusted:
         // start over. Items that kept our changes are recognised (same values / knife already swapped) and stay right.
         g_weapons.clear(); g_knives.clear(); g_gloves.clear(); g_agents.clear(); g_agentLastSet.clear(); g_pendingRebuild.clear();
+        g_firearmBindings.clear();
         if (g_logBudget-- > 0) Log("demo jumped from tick %d to %d - re-applying", g_lastTick, tick);
     }
     if (tick >= 0) g_lastTick = tick;
+
+    void* committingFirearm=nullptr;
+    uint32_t committingFirearmHandle=0;
+    if(g_hasCapturedFirearm) {
+        const auto request=std::move(g_capturedFirearm);g_hasCapturedFirearm=false;
+        void* weapon=Game::FromHandleExact(request.handle);
+        const int captureTick=firearmApplyResult.tick;
+        const bool changedTick=captureTick>=0 && tick>=0 && (tick<captureTick || tick-captureTick>256);
+        if(!changedTick && es==request.entitySystem && weapon && weapon==request.ent &&
+           Get<uint16_t>(static_cast<uint8_t*>(weapon)+O.econ_AttributeManager+O.container_Item,O.item_DefIndex)==request.def) {
+            // Ownership may change between capture and write. The captured
+            // entity remains the target even if it is already on the ground.
+            BindFirearmInstance(weapon,request.handle,request.def,request.owner,request.team,&request.skin);
+            committingFirearm=weapon;
+            committingFirearmHandle=request.handle;
+        } else {
+            RejectFirearmApply(FirearmApplyState::DemoChanging,"the captured gun changed before application.");
+        }
+    }
 
     const bool snapshot = now >= g_nextSnapshot;
     if(snapshot) liveWeaponModels.clear();
@@ -1823,7 +2152,8 @@ void OnFrameStage(int stage) {
             seenWeapons.insert(handle);
             {   // a demo jump can rebuild an entity under the same handle: then its old state doesn't apply
                 auto w = g_weapons.find(handle);
-                if (w != g_weapons.end() && w->second.ent != ent) g_weapons.erase(w);
+                if (w != g_weapons.end() && (w->second.ent != ent ||
+                    (!IsKnife(w->second.def) && w->second.def!=Get<uint16_t>(item,O.item_DefIndex)))) g_weapons.erase(w);
                 auto k = g_knives.find(handle);
                 if (k != g_knives.end() && k->second.ent != ent) g_knives.erase(k);
             }
@@ -1872,29 +2202,34 @@ void OnFrameStage(int stage) {
                         else if (!g_knivesSeen.count(want) && !LocalAnimContextReady(es, now))
                             note = NoModelNote("knife");
                         else { rule = &kr->skin; newDef = want; }
-                    } else if (!knife) {
-                        rule = GunRule(pr->second, team, def);
                     }
                 }
             }
-            ApplyWeapon(ent, item, handle, xuid, def, newDef, rule, note, fresh, ready, keepModel);
+            if (!knife) {
+                const auto application=ApplyFirearmForHolder(ent,item,handle,def,holder,teamOf(holder),note,fresh,ready);
+                xuid=application.xuid;rule=application.rule;
+                if(ent==committingFirearm && handle==committingFirearmHandle) {
+                    committingFirearm=nullptr;
+                    firearmApplyResult.state=g_firearmBindings.contains(handle)
+                        ? FirearmApplyState::Applied:FirearmApplyState::Restored;
+                    Log("firearm Apply completed: tick %d, handle %x, def %u, paint %d",
+                        tick,handle,def,Get<int>(ent,O.econ_FallbackPaintKit));
+                }
+            } else ApplyWeapon(ent, item, handle, xuid, def, newDef, rule, note, fresh, ready, keepModel);
             if(snapshot && holder && !knife) liveWeaponModels[{holder,def}]=EffectiveWeaponLegacy(ent,item,def);
             if (rule) { alive.insert(handle); ++changed; }
         }
     }
+    if(committingFirearm)
+        RejectFirearmApply(FirearmApplyState::Unavailable,"the captured gun was not present in the weapon update.");
     for (auto it = g_weapons.begin(); it != g_weapons.end();) it = alive.count(it->first) ? std::next(it) : g_weapons.erase(it);
     g_knownWeapons.swap(seenWeapons);
+    for(auto it=g_firearmBindings.begin();it!=g_firearmBindings.end();)
+        it=g_knownWeapons.count(it->first) ? std::next(it):g_firearmBindings.erase(it);
     g_firstPass = false;
     for (auto it = g_knives.begin(); it != g_knives.end();) it = alive.count(it->first) ? std::next(it) : g_knives.erase(it);
 
-    if (g_regenDue && now >= g_regenDue && now - g_lastRegen >= 800) {
-        g_regenDue = 0;
-        g_regenSecond = now + 1600;
-        g_regenWanted = true;
-    } else if (g_regenSecond && now >= g_regenSecond) {
-        g_regenSecond = 0;
-        g_regenWanted = true;
-    }
+    AdvanceWeaponRefresh(now);
     if (g_regenWanted) {
         g_regenWanted = false;
         g_lastRegen = now;
@@ -1907,20 +2242,21 @@ void OnFrameStage(int stage) {
                 FirstRunBegin("regenerate");
                 Breadcrumb("rebuilt all weapon skins");
                 Game::RegenerateWeaponSkins();
-                // The routine above only rebuilds guns that already had a custom skin. A gun that was stock in the demo
-                // (no skin material yet) is skipped, so its HUD name changed but it kept looking stock. Build those
-                // with the same per-weapon step, now that the cache is clear.
+                // Build stock guns after clearing the shared material cache. Also refresh ownership transitions
+                // explicitly: their new world/first-person presentation can still carry the previous material.
                 int built = 0;
                 for (uint32_t h : alive) {
-                    void* w = Game::FromHandle(h);
-                    if (!w) continue;
+                    void* w = Game::FromHandleExact(h);
+                    const auto state=g_weapons.find(h);
+                    if (!w || state==g_weapons.end() || state->second.ent!=w) continue;
+                    const bool ownership=std::exchange(state->second.rebuildForOwnership,false);
                     int a = 0, b = 0;
                     Game::MaterialCounts(w, a, b);
-                    if (a > 0 || b > 0) continue;
+                    if (!ownership && (a > 0 || b > 0)) continue;
                     if (Game::RegenerateWeapon(w, true) == 1) ++built;
                 }
-                if (built) Breadcrumb("built skins for %d stock gun(s)", built);
-                if (built && g_logBudget-- > 0) Log("built skins for %d gun(s) that had none yet", built);
+                if (built) Breadcrumb("built/refreshed skins for %d gun(s)", built);
+                if (built && g_logBudget-- > 0) Log("built/refreshed skins for %d stock or ownership-transition gun(s)", built);
                 if (g_logBudget-- > 0) Log("rebuilt weapon skins");
                 FirstRunEnd("regenerate");
                 // No need to re-make first-person models: CS2 copies the weapon's skin material to the first-person
@@ -2062,6 +2398,136 @@ void OnFrameStage(int stage) {
 
 #ifdef NSKINZCS2_TESTS
 namespace Skins {
+WeaponContinuityProbe ProbeWeaponContinuityForTests() {
+    constexpr uint32_t handle=0x1e457;
+    auto* old_vtable=Game::attributeVtable;uintptr_t fake_vtable=0;Game::attributeVtable=&fake_vtable;
+    const auto old_listener=presentationListener;presentationListener=nullptr;
+    auto saved_rules=std::move(rules);
+    auto saved_bindings=std::move(g_firearmBindings);
+    const auto due=g_regenDue,second=g_regenSecond,last=g_lastRegen;
+    const auto urgent=g_regenUrgent,wanted=g_regenWanted;
+    struct Guard {void* table;PresentationListener listener;std::map<uint64_t,PlayerRules> rules;
+        std::unordered_map<uint32_t,FirearmBinding> bindings;
+        ULONGLONG due,second,last;bool urgent,wanted;
+        ~Guard(){Game::attributeVtable=table;presentationListener=listener;Skins::rules=std::move(rules);
+        g_firearmBindings=std::move(bindings);
+        g_weapons.erase(0x1e457);g_regenDue=due;g_regenSecond=second;g_lastRegen=last;g_regenUrgent=urgent;g_regenWanted=wanted;
+        }} guard{old_vtable,old_listener,std::move(saved_rules),std::move(saved_bindings),due,second,last,urgent,wanted};
+    g_weapons.erase(handle);g_regenDue=g_regenSecond=0;g_regenWanted=g_regenUrgent=false;
+    std::vector<uint8_t> entity(32768);auto* item=entity.data()+O.econ_AttributeManager+O.container_Item;
+    At<uint16_t>(item,O.item_DefIndex)=60;
+    At<int>(entity.data(),O.econ_FallbackPaintKit)=7;
+    rules[123].guns[60].paint=548;rules[123].guns[60].preserveExtras=true;
+    std::string note;
+    BindFirearmInstance(entity.data(),handle,60,123,3,&rules.at(123).guns.at(60));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+    WeaponContinuityProbe result;
+    {
+        // At tick 53298 of 12.dem, the owner carried this M4A1-S while
+        // the knife was active. Only the full matching owner edge is enough.
+        constexpr uint32_t pawn=0x29873a;
+        CarriedFirearmSelection owned;
+        owned.Consider(entity.data(),0xd7830f,pawn,42,pawn,60);
+        owned.Consider(entity.data(),0xab82b5,0xffffffffu,60,pawn,60);
+        owned.Consider(entity.data(),0xab82b5,pawn+0x8000,60,pawn,60);
+        result.holsteredSelection=!owned.entity;
+        owned.Consider(entity.data(),0xab82b5,pawn,60,pawn,60);
+        result.holsteredSelection &= owned.entity==entity.data() &&
+            owned.handle==0xab82b5 && !owned.ambiguous;
+        owned.Consider(entity.data(),0xab82b6,pawn,60,pawn,60);
+        result.holsteredSelection &= owned.ambiguous;
+    }
+    {
+        std::vector<uint8_t> pickup(32768);
+        auto* pickupItem=pickup.data()+O.econ_AttributeManager+O.container_Item;
+        At<uint16_t>(pickupItem,O.item_DefIndex)=60;
+        At<int>(pickup.data(),O.econ_FallbackPaintKit)=11;
+        ApplyFirearmForHolder(pickup.data(),pickupItem,handle+1,60,123,3,note,false,true);
+        result.laterPickupUntouched=Get<int>(pickup.data(),O.econ_FallbackPaintKit)==11;
+        rules[123].guns[60].paint=309;
+        ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+        result.templateDoesNotRetarget=Get<int>(entity.data(),O.econ_FallbackPaintKit)==548;
+        BindFirearmInstance(pickup.data(),handle+1,60,123,3,&rules.at(123).guns.at(60));
+        ApplyFirearmForHolder(pickup.data(),pickupItem,handle+1,60,123,3,note,false,true);
+        result.repeatedApplyBindsNewGun=Get<int>(pickup.data(),O.econ_FallbackPaintKit)==309 &&
+            Get<int>(entity.data(),O.econ_FallbackPaintKit)==548;
+        rules[123].guns[60].paint=548;
+        g_weapons.erase(handle+1);
+        g_firearmBindings.erase(handle+1);
+    }
+    result.pickupRefreshImmediate=g_regenUrgent && g_regenDue<=GetTickCount64();
+    // A demo packet arrives after the pre-update writer, resetting the fallback
+    // and native item identity. The render-side maintenance must repair both.
+    At<int>(entity.data(),O.econ_FallbackPaintKit)=7;
+    At<uint32_t>(item,O.item_ItemIDHigh)=0;
+    const bool packetReset=MaintainFirearmAfterUpdate(entity.data(),item,g_weapons.at(handle));
+    result.postUpdateFinishRetained=Get<int>(entity.data(),O.econ_FallbackPaintKit)==548 &&
+        Get<uint32_t>(item,O.item_ItemIDHigh)==uint32_t(g_weapons.at(handle).fakeId>>32) && packetReset;
+    result.stablePostUpdate=true;
+    for(int i=0;i<100;++i)result.stablePostUpdate &= !MaintainFirearmAfterUpdate(entity.data(),item,g_weapons.at(handle));
+    AttrVec primary;
+    if(OpenList(item,O.item_AttributeList,primary))for(int i=0;i<*primary.count;++i) {
+        auto* a=*primary.data+i*O.attrSize;
+        if(Get<uint16_t>(a,O.attr_DefIndex)==ATTR_PAINT)At<float>(a,O.attr_Value)=7.f;
+    }
+    result.postUpdateFinishRetained &= MaintainFirearmAfterUpdate(entity.data(),item,g_weapons.at(handle));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,0,0,note,false,true);
+    result.droppedFinish=Get<int>(entity.data(),O.econ_FallbackPaintKit)==548;
+    ApplyFirearmForHolder(entity.data(),item,handle,60,789,2,note,false,true);
+    result.unconfiguredPickupRetained=Get<int>(entity.data(),O.econ_FallbackPaintKit)==548;
+    rules[456].guns[60].paint=309;rules[456].guns[60].preserveExtras=true;
+    ApplyFirearmForHolder(entity.data(),item,handle,60,456,3,note,false,true);
+    result.templateDoesNotRetarget &= Get<int>(entity.data(),O.econ_FallbackPaintKit)==548;
+    BindFirearmInstance(entity.data(),handle,60,456,3,&rules.at(456).guns.at(60));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,456,3,note,false,true);
+    ApplyFirearmForHolder(entity.data(),item,handle,60,0,0,note,false,true);
+    result.configuredPickupOverrides=Get<int>(entity.data(),O.econ_FallbackPaintKit)==309 && g_weapons.at(handle).ruleOwner==456;
+    rules.erase(456);
+    BindFirearmInstance(entity.data(),handle,60,456,3,nullptr);
+    ApplyFirearmForHolder(entity.data(),item,handle,60,0,0,note,false,true);
+    result.disabledRestores=Get<int>(entity.data(),O.econ_FallbackPaintKit)==7;
+    ApplyFirearmForHolder(entity.data(),item,handle,60,0,0,note,false,true);
+    result.unrelatedUntouched=Get<int>(entity.data(),O.econ_FallbackPaintKit)==7 && !g_weapons.count(handle);
+    BindFirearmInstance(entity.data(),handle,60,123,3,&rules.at(123).guns.at(60));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+    std::vector<uint8_t> replacement(32768);auto* other=replacement.data()+O.econ_AttributeManager+O.container_Item;
+    At<uint16_t>(other,O.item_DefIndex)=60;At<int>(replacement.data(),O.econ_FallbackPaintKit)=11;
+    ApplyFirearmForHolder(replacement.data(),other,handle,60,0,0,note,false,true);
+    result.reusedEntityRejected=Get<int>(replacement.data(),O.econ_FallbackPaintKit)==11 && !g_weapons.count(handle);
+    BindFirearmInstance(entity.data(),handle,60,123,3,&rules.at(123).guns.at(60));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+    At<uint16_t>(item,O.item_DefIndex)=7;At<int>(entity.data(),O.econ_FallbackPaintKit)=44;
+    ApplyFirearmForHolder(entity.data(),item,handle,7,0,0,note,false,true);
+    result.reusedDefinitionRejected=Get<int>(entity.data(),O.econ_FallbackPaintKit)==44 && !g_weapons.count(handle);
+    At<uint16_t>(item,O.item_DefIndex)=60;
+    g_regenDue=g_regenSecond=0;g_regenUrgent=g_regenWanted=false;
+    BindFirearmInstance(entity.data(),handle,60,123,3,&rules.at(123).guns.at(60));
+    ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,false);
+    result.readinessDeferred=!g_regenUrgent && g_weapons.at(handle).ownershipRefreshPending;
+    ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+    result.readinessDeferred &= g_regenUrgent && !g_weapons.at(handle).ownershipRefreshPending;
+    const auto immediate=g_regenDue;RefreshWeapon(entity.data());
+    result.batchedOnce=g_regenDue==immediate;
+    g_lastRegen=GetTickCount64();AdvanceWeaponRefresh(0); // Also beats the ordinary 800 ms throttle.
+    result.batchedOnce &= g_regenWanted;
+    g_regenWanted=false;AdvanceWeaponRefresh(0);
+    result.batchedOnce &= !g_regenWanted;
+    g_regenDue=g_regenSecond=0;g_regenUrgent=g_regenWanted=false;
+    g_weapons.at(handle).rebuildForOwnership=false;
+    for(int i=0;i<100;++i) ApplyFirearmForHolder(entity.data(),item,handle,60,123,3,note,false,true);
+    result.steadyFramesDoNotRefresh=!g_regenDue && !g_regenUrgent && !g_weapons.at(handle).rebuildForOwnership;
+    result.multipleGunTypes=true;
+    for(const auto [definition,paint] : {std::pair<uint16_t,int>{1,37},{7,44},{9,344},{60,548}}) {
+        g_weapons.erase(handle);At<uint16_t>(item,O.item_DefIndex)=definition;
+        At<int>(entity.data(),O.econ_FallbackPaintKit)=7;
+        rules[123].guns[definition].paint=paint;rules[123].guns[definition].preserveExtras=true;
+        BindFirearmInstance(entity.data(),handle,definition,123,3,&rules.at(123).guns.at(definition));
+        ApplyFirearmForHolder(entity.data(),item,handle,definition,123,3,note,false,true);
+        ApplyFirearmForHolder(entity.data(),item,handle,definition,0,0,note,false,true);
+        result.multipleGunTypes &= Get<int>(entity.data(),O.econ_FallbackPaintKit)==paint;
+    }
+    return result;
+}
 bool ProbeHeldWeaponRuleForTests() {
     constexpr uint64_t original=76561198174527843ull,holder=76561198255963631ull;
     auto* old_vtable=Game::attributeVtable;uintptr_t fake_vtable=0;Game::attributeVtable=&fake_vtable;

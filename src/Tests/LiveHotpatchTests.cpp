@@ -102,6 +102,12 @@ void RunLiveHotpatchTests() {
     live_test::ConfigureEngineSettings({});
     const auto wp=BuildScopedApplyPlan(applied,config,{ApplyScope::WeaponFinish,0},{},{},catalog);
     Check(wp.issue==ScopedApplyIssue::None && !wp.NeedsDemo() && wp.apply_config.knife_profiles.empty(),"gun apply remains independent");
+    Check(wp.apply_config.firearm_apply_request.sequence==1 && wp.apply_config.firearm_apply_request.xuid==123 &&
+        wp.apply_config.firearm_apply_request.definition==7,"gun Apply carries an explicit one-shot active-instance request");
+    const auto repeat_gun=BuildScopedApplyPlan(wp.apply_config,config,{ApplyScope::WeaponFinish,0},{},{},catalog);
+    Check(repeat_gun.apply_config.firearm_apply_request.sequence==2,"reapplying identical settings must capture the current gun again");
+    const auto unrelated_knife=BuildScopedApplyPlan(wp.apply_config,config,{ApplyScope::Knife,0},{},{},catalog);
+    Check(unrelated_knife.apply_config.firearm_apply_request.sequence==1,"knife Apply cannot replay the previous firearm capture");
     const auto session_dir=std::filesystem::current_path()/"build/temp"/("hybrid-session-"+std::to_string(GetCurrentProcessId()));
     std::filesystem::create_directories(session_dir);
     const auto editor_path=session_dir/"settings.json";
@@ -117,6 +123,8 @@ void RunLiveHotpatchTests() {
         !ConfigStore::FindMatchingGloveProfile(first_gun.apply_config,123),"first gun Apply cannot reactivate historical knife/glove settings");
     Check(ConfigStore::SaveRuntimeApplied(editor_path,12345,first_gun.apply_config),"publish selected gun transaction");
     const auto ui_reopened=ConfigStore::LoadRuntimeApplied(editor_path,12345);
+    Check(ui_reopened.firearm_apply_request.sequence==first_gun.apply_config.firearm_apply_request.sequence &&
+        ui_reopened.firearm_apply_request.xuid==123,"isolated UI/runtime publication must preserve the one-shot gun request");
     Check(ConfigStore::FindMatchingProfile(ui_reopened,123,7) && !ConfigStore::FindMatchingKnifeProfile(ui_reopened,123),
         "reopening the panel preserves only this process's explicitly applied items");
     Check(live_test::ConvertRules(ConfigStore::LoadRuntimeApplied(editor_path,12346),{}).empty(),"another process cannot inherit this session's items");
