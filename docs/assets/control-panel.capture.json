@@ -1,5 +1,5 @@
 {
-  "version": "0.7.7",
+  "version": "0.7.8",
   "method": "Unmodified D3D11 backbuffer PNG from the real MainWindow implementation; UiHarness --documentation",
   "example_configuration": "AK-47, Case Hardened, five identical Titan (Holo) stickers; slot 1 custom placement enabled at zero delta",
   "game_connected": false,
@@ -8,7 +8,7 @@
   "height": 1421,
   "image_sha256": "8786c30539b4a5284920cb5a96461e2ae7b336fc8bfd11aa3550835075b1db07",
   "source_sha256_lf": {
-    "src/UI/MainWindow.cpp": "b4217c07a2ea41e4131375fec8ccae0a15cf22c2cb8b7259c453c6a0d4df64ff",
+    "src/UI/MainWindow.cpp": "22abbb00db2e77dc79de98d30e2e5e21ca666a1393017f6fef013cedaf754059",
     "src/UI/MainWindow.hpp": "55aa90f0f9500624a6525de69633bf8a4bb7f2e0cbf46969660e8cf552d7fe2d",
     "src/UI/UiText.hpp": "db96bde374c95e5d688b59c75cc39950c93c4871c1f5f8f6670ef5d0c6f2c4fb",
     "src/UI/KnifeFinishLabels.hpp": "a972cdd0ccbf8d6bd62cea0af543b8684309f1d92b4c39f90f3be8ff00af750f",

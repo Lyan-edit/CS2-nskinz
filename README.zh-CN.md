@@ -1,4 +1,4 @@
-[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.7.7)](./docs/assets/nskinz-banner.svg?v=0.7.7)
+[![nSkinzCS2 HLAE 离线 Demo 皮肤工具](./docs/assets/nskinz-banner.svg?v=0.7.8)](./docs/assets/nskinz-banner.svg?v=0.7.8)
 
 <h3 align="center">面向 HLAE Demo 回放的 Counter-Strike 2 离线外观工具</h3>
 
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.7"><img src="https://img.shields.io/badge/release-v0.7.7-2ea043?style=flat-square" alt="最新正式版"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.8"><img src="https://img.shields.io/badge/release-v0.7.8-2ea043?style=flat-square" alt="最新正式版"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/releases"><img src="https://img.shields.io/github/downloads/Lyan-edit/CS2-nskinz/total?style=flat-square&label=下载量" alt="下载量"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz"><img src="https://img.shields.io/github/stars/Lyan-edit/CS2-nskinz?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/network/members"><img src="https://img.shields.io/github/forks/Lyan-edit/CS2-nskinz?style=flat-square" alt="Forks"></a>
@@ -21,26 +21,26 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.7/Lyan_nskinz-v0.7.7.dll"><img src="https://img.shields.io/badge/下载-中英文共用%20DLL-0969da?style=for-the-badge" alt="Bilingual DLL"></a>
-  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.7"><img src="https://img.shields.io/badge/Release-v0.7.7-2ea043?style=for-the-badge" alt="v0.7.7 发布说明"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/download/v0.7.8/Lyan_nskinz-v0.7.8.dll"><img src="https://img.shields.io/badge/下载-中英文共用%20DLL-0969da?style=for-the-badge" alt="Bilingual DLL"></a>
+  <a href="https://github.com/Lyan-edit/CS2-nskinz/releases/tag/v0.7.8"><img src="https://img.shields.io/badge/Release-v0.7.8-2ea043?style=for-the-badge" alt="v0.7.8 发布说明"></a>
   <a href="https://github.com/Lyan-edit/CS2-nskinz/issues/new/choose"><img src="https://img.shields.io/badge/提交问题-f85149?style=for-the-badge" alt="提交问题"></a>
 </p>
 
 > **安全提示：** nSkinzCS2 只用于通过 HLAE、带 `-insecure` 启动的离线 Demo 回放。请勿加载到 VAC 保护服务器或任何联机服务器。超出此范围使用造成的账号风险由使用者自行承担。
 
-## v0.7.7 更新
+## v0.7.8 更新
 
 [官方 Wiki 使用手册](https://github.com/Lyan-edit/CS2-nskinz/wiki) · [手册源码与离线阅读](docs/wiki/Home.md)
 
-新增内嵌打蜡反光地图材质的独立应用，改为一个 DLL 内即时切换中英文，修复暂停 Demo 重载命令等待和 F8 输入交接。保留原有 UI 布局、配色、饰品热修、挂件重建、工坊地图、固定雷达、HUD 名称和每项独立应用。
+枪械涂装可直接应用到目标玩家身上携带的所选枪械，无需先切出来。已换肤的枪丢出后保留涂装，后来捡到的其它枪保留原涂装。结果栏显示游戏端是否确认应用。
 
-详见[双语发布说明](docs/releases/v0.7.7.md)。本机离线核验客户端为 **CS2 2000948 / 1.42.0.0**。用户已反馈前述测试版效果生效；本次发版构建未启动 CS2/HLAE，原生测试及资源命中计数不能替代不同 Demo、ReShade 组合与 GPU 帧耗验收。
+详见[双语发布说明](docs/releases/v0.7.8.md)。本机核验客户端为 **CS2 2000950 / 1.42.0.1**。用户已在前述测试版验证应用及离手效果。
 
 ## 当前功能与应用路径
 
 | 模块 | 使用方法 | 应用路径 |
 | --- | --- | --- |
-| 枪械 | 填写当前持枪者 XUID，选择枪型、涂装、种子、磨损和名称，点击该枪械应用 | 当前 Demo 热修 |
+| 枪械 | 填写携带者 XUID，选择枪型和涂装，点击应用到玩家当时身上的这把枪 | 当前 Demo 热修 |
 | 刀 | 仅饰面先检测当前刀型并筛选相容涂装；模型＋饰面选择目标刀型，再点刀的应用 | 两种模式都热修 |
 | 手套 | 仅饰面筛选当前手套型号涂装；默认 T/CT 或换型号请选择模型＋饰面，再点手套应用 | 两种模式都热修 |
 | 贴纸 | 五槽分别设置图案及磨损/缩放/旋转/位置；可只应用当前槽或明确应用全部五槽，空槽表示清除 | 热修 |
@@ -58,7 +58,7 @@
 2. 从本页下载中英文共用的单个 DLL，放入可写文件夹。在控制台执行（替换为实际路径）：
 
 ```text
-mirv_loadlibrary "D:\Lyan_nskinz-v0.7.7.dll"
+mirv_loadlibrary "D:\Lyan_nskinz-v0.7.8.dll"
 ```
 
 3. 按 `Insert` 打开独立面板。填写目标当前持枪者 XUID，选择外观，点击该项的智能应用按钮。
@@ -90,11 +90,11 @@ ReShade 效果独立控制。Insert 收起当前面板会交还游戏焦点，F8
 
 下面是当前 MainWindow 原生渲染导出的真实截图；没有连接游戏或模拟键盘。五槽贴纸及具体枪型预览均保留。
 
-![nSkinzCS2 v0.7.7 控制面板](./docs/assets/control-panel.png?v=0.7.7)
+![nSkinzCS2 v0.7.8 控制面板](./docs/assets/control-panel.png?v=0.7.8)
 
 ## 源码、验证与授权
 
-Release 提供一个中英文共用 DLL、完整包、对应源码和 SHA-256 校验。验证说明见[发布记录](docs/releases/v0.7.7.md)，历史更新保留在 [CHANGELOG](CHANGELOG.md) 与 [docs/releases](docs/releases)。
+Release 提供一个中英文共用 DLL、完整包、对应源码和 SHA-256 校验。验证说明见[发布记录](docs/releases/v0.7.8.md)，历史更新保留在 [CHANGELOG](CHANGELOG.md) 与 [docs/releases](docs/releases)。
 
 第三方组件的必要许可证和署名见 [NOTICE](NOTICE.md) 与 [第三方声明](THIRD_PARTY_NOTICES.md)。
 

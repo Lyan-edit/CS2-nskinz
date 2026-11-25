@@ -11,9 +11,9 @@
 
 namespace nskinzcs2::compatibility
 {
-inline constexpr std::string_view kVerifiedClientVersion = "2000943";
-inline constexpr std::string_view kVerifiedPatchVersion = "1.41.9.7";
-inline constexpr std::string_view kVerifiedSourceRevision = "11228971";
+inline constexpr std::string_view kVerifiedClientVersion = "2000950";
+inline constexpr std::string_view kVerifiedPatchVersion = "1.42.0.1";
+inline constexpr std::string_view kVerifiedSourceRevision = "11268945";
 inline constexpr std::string_view kVerifiedHlaeVersion = "2.193.0.0";
 // C_EconWearable Schema size retained by the installed build 2000943 class
 // metadata and cross-checked against both allocator immediates.

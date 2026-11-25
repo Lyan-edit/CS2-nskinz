@@ -49,7 +49,7 @@
   <PropertyGroup>
     <IntDir>$(ProjectDir)build\$(Configuration)\$(ProjectName)\</IntDir>
     <OutDir>$(ProjectDir)build\$(Configuration)\</OutDir>
-    <TargetName>Lyan_nskinz-v0.7.7</TargetName>
+    <TargetName>Lyan_nskinz-v0.7.8</TargetName>
     <VCToolsVersion>14.44.35207</VCToolsVersion>
     <IncludePath>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\json;$(ProjectDir)third_party\MinHook\include;$(IncludePath)</IncludePath>
   </PropertyGroup>

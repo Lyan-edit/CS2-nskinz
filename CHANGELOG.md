@@ -1,5 +1,13 @@
 # Changelog / 更新记录
 
+## [0.7.8] - 2026-11-25
+
+- 枪械涂装应用会绑定目标玩家当时携带的所选枪械，即使切到刀或手枪也可应用。后来拾取的其它枪保持原涂装。
+- 修复已应用枪械丢出及落地时的涂装丢失。刷新前清除该枪的旧外观缓存，并恢复正确网格。面板按游戏端结果反馈成功或拒绝。
+- Apply a finish to the selected firearm already carried by the target player, including a holstered firearm. Later pickups retain their original finish. Invalidate cached visuals before refreshing the painted firearm on drop.
+
+See [release notes](docs/releases/v0.7.8.md).
+
 ## [0.7.7] - 2026-11-21
 
 - Add independently applied, embedded waxed-reflection materials for eight maps: 1,450 verified resources, isolated cache reuse/repair and matched-map redirects.

@@ -53,11 +53,13 @@ VersionedConfigSnapshot pending;
 VersionedConfigSnapshot current;
 runtime::Status report;
 WeaponModels model_report;
+FirearmApplyResult firearm_report;
 ULONGLONG report_at = 0;
 std::uint32_t stages = 0;
 unsigned int confirmation_calls = 0;
 bool confirmed = false;
 bool rules_pending = true;
+std::uint64_t firearm_request_sequence=0;
 std::unordered_map<std::uint64_t, runtime::GloveApplyCarrier> carriers;
 std::mutex command_mutex;
 std::string pending_command;
@@ -119,11 +121,19 @@ void Dispatch(int stage) {
         std::lock_guard lock(port::Skins::lock);
         ConfigureEngineSettings(*current.document);
         port::Skins::rules = std::move(rules);
+        const auto& request=current.document->firearm_apply_request;
+        if(request.sequence && request.sequence!=firearm_request_sequence) {
+            firearm_request_sequence=request.sequence;
+            port::Skins::CaptureFirearmApply(request.sequence,request.xuid,static_cast<std::uint16_t>(request.definition));
+        }
         rules_pending = false;
     }
     port::Step step("applying skins (FrameStageNotify)");
     port::FirstRunBegin("frame-stage");
     port::Skins::OnFrameStage(stage);
+    // The render pass may consume world materials inside the original callback.
+    // Check the same bounded maintenance seam immediately before that draw too.
+    if(stage==compatibility::kFrameRenderPassStage)port::Skins::AfterFrameStage(stage);
     presentation::Tick();
     port::FirstRunEnd("frame-stage");
     const auto now = GetTickCount64();
@@ -131,11 +141,17 @@ void Dispatch(int stage) {
     report_at = now + 500;
     runtime::Status next_report;
     WeaponModels next_models;
+    FirearmApplyResult next_firearm_apply;
     {
         std::lock_guard lock(port::Skins::lock);
         next_models=port::Skins::liveWeaponModels;
+        next_firearm_apply=port::Skins::firearmApplyResult;
         next_report.demo_playing = port::Skins::demoPlaying;
         next_report.detail = Wide(port::Skins::lastStatus);
+        if(!port::Skins::firearmNote.empty()) {
+            next_report.detail=Wide(port::Skins::firearmNote);
+            next_report.diagnostics.push_back(next_report.detail);
+        }
         if(!port::Skins::gloveNote.empty()) {
             next_report.detail=L"Glove not applied: "+Wide(port::Skins::gloveNote);
             next_report.diagnostics.push_back(next_report.detail);
@@ -177,11 +193,19 @@ void Dispatch(int stage) {
     next_report.diagnostics.push_back(L"Default T/CT -> special gloves uses Pawn EconGloves + native bodygroup + reapply.");
     next_report.diagnostics.push_back(L"Upstream animation settings may switch to local data for missing models; old-Demo compatibility is not guaranteed.");
     std::unique_lock lock(report_mutex, std::try_to_lock);
-    if (lock.owns_lock()) { report = std::move(next_report);model_report=std::move(next_models); }
+    if (lock.owns_lock()) {
+        report = std::move(next_report);
+        model_report=std::move(next_models);
+        firearm_report=next_firearm_apply;
+    }
 }
 bool GuardedDispatch(int stage) {
     __try { Dispatch(stage); return true; }
     __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+bool GuardedAfterDispatch(int stage) {
+    __try { port::Skins::AfterFrameStage(stage); return true; }
+    __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
 }
 std::uintptr_t Hook(void* self, std::uintptr_t stage, std::uintptr_t a3, std::uintptr_t a4) {
     if (enabled.load() && !faulted.load()) {
@@ -206,7 +230,18 @@ std::uintptr_t Hook(void* self, std::uintptr_t stage, std::uintptr_t a3, std::ui
             }
         }
     }
-    return original ? original(self,stage,a3,a4) : 0;
+    const auto result=original ? original(self,stage,a3,a4):0;
+    // CS2's original callback can replace item data and world materials on a
+    // drop. Repair only already-bound firearms after it finishes, before draw.
+    if(enabled.load() && !faulted.load() && confirmed && owner.load()==GetCurrentThreadId() &&
+       (static_cast<int>(stage)==port::Game::PostDataUpdateStage() ||
+        static_cast<int>(stage)==compatibility::kFrameRenderPassStage) && TryAcquireSRWLockShared(&lifetime)) {
+        bool ok=false;
+        try {ok=GuardedAfterDispatch(static_cast<int>(stage));}catch(...){ok=false;}
+        if(!ok)faulted.store(true);
+        ReleaseSRWLockShared(&lifetime);
+    }
+    return result;
 }
 bool CriticalSchemaReady() {
     // Every offset used by the imported cosmetics writer must come from this
@@ -272,17 +307,29 @@ bool Install(HMODULE module) {
 }
 }
 
-bool PublishWeaponModels(const std::filesystem::path& directory,DWORD pid,const WeaponModels& models) {
+bool PublishWeaponModels(const std::filesystem::path& directory,DWORD pid,const WeaponModels& models,
+    const FirearmApplyResult& firearm_apply) {
     try {
         using nlohmann::json;json rows=json::array();
         for(const auto& [key,legacy]:models) rows.push_back({key.first,key.second,legacy});
         const auto path=directory/(L"nSkinzCS2.live-weapon-models-"+std::to_wstring(pid)+L".json");
         const auto temporary=std::filesystem::path(path.wstring()+L".tmp");
-        {std::ofstream f(temporary,std::ios::binary|std::ios::trunc);if(!f) return false;f<<json{{"at",GetTickCount64()},{"models",rows}}.dump();if(!f) return false;}
+        json result{{"at",GetTickCount64()},{"models",rows}};
+        if(firearm_apply.sequence) result["firearm_apply"] = {
+            {"sequence",firearm_apply.sequence},{"state",static_cast<int>(firearm_apply.state)},
+            {"requested",firearm_apply.requested},{"tick",firearm_apply.tick}};
+        {
+            std::ofstream f(temporary,std::ios::binary|std::ios::trunc);
+            if(!f) return false;
+            f<<result.dump();
+            if(!f) return false;
+        }
         return MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING)!=0;
     } catch(...) {return false;}
 }
-WeaponModels ReadWeaponModels(const std::filesystem::path& directory,DWORD pid) {
+WeaponModels ReadWeaponModels(const std::filesystem::path& directory,DWORD pid,
+    FirearmApplyResult* firearm_apply) {
+    if(firearm_apply) *firearm_apply={};
     try {
         const auto path=directory/(L"nSkinzCS2.live-weapon-models-"+std::to_wstring(pid)+L".json");
         if(!std::filesystem::exists(path) || std::filesystem::file_size(path)>262144) return {};
@@ -294,6 +341,18 @@ WeaponModels ReadWeaponModels(const std::filesystem::path& directory,DWORD pid) 
             const auto xuid=row[0].get<std::uint64_t>();const auto def=row[1].get<int>();
             if(!xuid || def<=0 || def>65535) continue;
             result[{xuid,static_cast<std::uint16_t>(def)}]=row[2].get<bool>();
+        }
+        if(firearm_apply) {
+            using port::Skins::FirearmApplyState;
+            if(const auto row=j.find("firearm_apply");row!=j.end() && row->is_object()) {
+                const auto state=row->value("state",-1);
+                const auto requested=row->value("requested",0);
+                if(state>=0 && state<=static_cast<int>(FirearmApplyState::Unavailable) &&
+                   requested>0 && requested<=65535) {
+                    *firearm_apply={row->value("sequence",std::uint64_t{}),static_cast<FirearmApplyState>(state),
+                        static_cast<std::uint16_t>(requested),row->value("tick",-1)};
+                }
+            }
         }
         return result;
     }catch(...) {return {};}
@@ -453,6 +512,7 @@ void Run(AppState& state, HMODULE module, std::atomic_bool& stop, HANDLE refresh
     // Baseline before UI activation: applying a knife must not replay unrelated
     // keychains that were already present in the loaded applied document.
     current=state.SnapshotConfigVersioned();rules_pending=true;
+    firearm_request_sequence=current.document ? current.document->firearm_apply_request.sequence:0;
     {std::lock_guard guard(pending_mutex);pending=current;}
     wchar_t keychain_event_name[96]{};
     swprintf_s(keychain_event_name,L"Local\\nSkinzCS2.LiveKeychainRefresh.%lu",static_cast<unsigned long>(GetCurrentProcessId()));
@@ -553,8 +613,15 @@ void Run(AppState& state, HMODULE module, std::atomic_bool& stop, HANDLE refresh
         state.UpdateStatus(status);
         runtime::PublishGloveApplyCarriers(directory,GetCurrentProcessId(),state.SnapshotGloveApplyCarriers());
         if(GetTickCount64()-models_published_at>=500) {
-            WeaponModels snapshot;{std::lock_guard lock(report_mutex);snapshot=model_report;}
-            PublishWeaponModels(directory,GetCurrentProcessId(),snapshot);models_published_at=GetTickCount64();
+            WeaponModels snapshot;
+            FirearmApplyResult firearm_apply;
+            {
+                std::lock_guard lock(report_mutex);
+                snapshot=model_report;
+                firearm_apply=firearm_report;
+            }
+            PublishWeaponModels(directory,GetCurrentProcessId(),snapshot,firearm_apply);
+            models_published_at=GetTickCount64();
         }
         Logger::FlushDeferred();
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
